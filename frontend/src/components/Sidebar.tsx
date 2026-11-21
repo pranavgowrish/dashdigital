@@ -4,33 +4,42 @@ import type { CityOption } from "../data/cities";
 import { CityPicker } from "./CityPicker";
 import type { Hazard, HazardStatus, Severity } from "../data/hazards";
 
-const SEVERITY_STYLES: Record<Severity, string> = {
-  High: "bg-red-100 text-red-700 ring-red-200",
-  Medium: "bg-amber-100 text-amber-700 ring-amber-200",
-  Low: "bg-yellow-100 text-yellow-800 ring-yellow-200",
+const SEVERITY_COLOR: Record<Severity, string> = {
+  High: "#dc2626",
+  Medium: "#f59e0b",
+  Low: "#eab308",
+};
+const RESOLVED_COLOR = "#16a34a";
+
+const STATUS_LABEL: Record<HazardStatus, string> = {
+  open: "Open",
+  dispatched: "Crew dispatched",
+  resolved: "Resolved",
 };
 
-const STATUS_STYLES: Record<HazardStatus, string> = {
-  open: "bg-slate-100 text-slate-700",
-  dispatched: "bg-blue-100 text-blue-700",
-  resolved: "bg-green-100 text-green-700",
-};
+const pinColor = (h: Hazard) => (h.status === "resolved" ? RESOLVED_COLOR : SEVERITY_COLOR[h.severity]);
 
-function SeverityBadge({ hazard }: { hazard: Hazard }) {
-  if (hazard.status === "resolved") {
-    return (
-      <span className="bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-200">
-        Resolved
-      </span>
-    );
-  }
+function SeverityTag({ hazard }: { hazard: Hazard }) {
   return (
-    <span
-      className={`px-2 py-0.5 text-xs font-medium ring-1 ${SEVERITY_STYLES[hazard.severity]}`}
-    >
-      {hazard.severity}
+    <span className="inline-flex items-center gap-1.5 text-xs text-slate-700">
+      <span className="h-2.5 w-2.5" style={{ background: pinColor(hazard) }} />
+      {hazard.status === "resolved" ? "Resolved" : hazard.severity}
     </span>
   );
+}
+
+const ticketId = (h: Hazard) => `HZ-${String(h.objectId).padStart(4, "0")}`;
+
+const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+const compass = (deg: number) => COMPASS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+
+function timeAgo(iso: string) {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} days ago`;
 }
 
 const label = (h: Hazard) => h.hazard_type.charAt(0).toUpperCase() + h.hazard_type.slice(1);
@@ -39,12 +48,11 @@ const formatTime = (iso: string) =>
 
 const SELECT_CLASS =
   "mt-1 w-full border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200";
-const LABEL_CLASS = "mt-3 block text-xs font-medium uppercase tracking-wide text-slate-500";
+const LABEL_CLASS = "mt-3 block text-sm font-medium text-slate-700";
 
 const DEFAULT_WIDTH = 384;
 const MIN_WIDTH = 280;
 const WIDTH_KEY = "triage-panel-width";
-/** Never let the panel take more than 75% of the window, so the map stays usable. */
 const maxWidth = () => Math.max(MIN_WIDTH, Math.round(window.innerWidth * 0.75));
 const clampWidth = (w: number) => Math.min(Math.max(w, MIN_WIDTH), maxWidth());
 
@@ -61,11 +69,10 @@ function saveWidth(w: number) {
   try {
     localStorage.setItem(WIDTH_KEY, String(w));
   } catch {
-    // storage unavailable (private mode etc.): width just won't be remembered
+    return;
   }
 }
 
-/** Drag handle on the panel's left edge. Also works with arrow keys; double-click resets. */
 function ResizeHandle({ width, onResize }: { width: number; onResize: (w: number) => void }) {
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -76,7 +83,6 @@ function ResizeHandle({ width, onResize }: { width: number; onResize: (w: number
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
 
-    // The panel sits on the right, so dragging left (smaller clientX) makes it wider.
     const onMove = (ev: PointerEvent) => onResize(clampWidth(startWidth + (startX - ev.clientX)));
     const onUp = () => {
       handle.removeEventListener("pointermove", onMove);
@@ -119,7 +125,7 @@ interface SidebarProps {
   states: UsState[];
   state: UsState | null;
   onStateChange: (code: string | null) => void;
-  cities: CityOption[]; // places in the selected state
+  cities: CityOption[];
   citiesLoading: boolean;
   citiesError: string | null;
   city: CityOption | null;
@@ -127,7 +133,6 @@ interface SidebarProps {
   hazards: Hazard[];
   selected: Hazard | null;
   onSelect: (objectId: number | null) => void;
-  /** Leave the hazard detail view (App zooms the map back to where it was). */
   onExit: () => void;
   open: boolean;
   onClose: () => void;
@@ -159,7 +164,6 @@ export function Sidebar({
   };
 
   return (
-    // Closed = zero width (kept mounted so the city search and selection survive closing).
     <aside
       id="triage-panel"
       inert={!open}
@@ -215,11 +219,10 @@ export function Sidebar({
           </>
         )}
 
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-          <Stat value={hazards.length} label="Total" />
-          <Stat value={active} label="Active" />
-          <Stat value={high} label="High" accent />
-        </div>
+        <p className="mt-3 text-sm text-slate-600 tabular-nums">
+          {hazards.length} {hazards.length === 1 ? "hazard" : "hazards"} · {active} open
+          {high > 0 && <span className="text-red-700"> · {high} high priority</span>}
+        </p>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -244,11 +247,11 @@ export function Sidebar({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium">{label(h)}</span>
-                      <SeverityBadge hazard={h} />
+                      <SeverityTag hazard={h} />
                     </div>
-                    <p className="truncate text-sm text-slate-500">{h.street}</p>
-                    <p className="text-xs text-slate-400">
-                      {h.report_count} report{h.report_count === 1 ? "" : "s"}
+                    <p className="truncate text-sm text-slate-600">{h.street}</p>
+                    <p className="text-xs text-slate-500 tabular-nums">
+                      {ticketId(h)} · {h.report_count}× reported · {timeAgo(h.detected_at)}
                     </p>
                   </div>
                 </button>
@@ -262,61 +265,78 @@ export function Sidebar({
   );
 }
 
-function Stat({ value, label, accent }: { value: number; label: string; accent?: boolean }) {
-  return (
-    <div className="bg-slate-50 py-2">
-      <div className={`text-lg font-semibold ${accent ? "text-red-600" : ""}`}>{value}</div>
-      <div className="text-xs text-slate-500">{label}</div>
-    </div>
-  );
-}
-
 function HazardDetail({ hazard, onBack }: { hazard: Hazard; onBack: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const coords = `${hazard.lat.toFixed(5)}, ${hazard.lon.toFixed(5)}`;
+  const copyCoords = () => {
+    navigator.clipboard
+      ?.writeText(coords)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      })
+      .catch(() => {});
+  };
+
   return (
-    <div className="p-4">
-      <button
-        type="button"
-        onClick={onBack}
-        className="text-sm font-medium text-blue-600 hover:text-blue-800"
-      >
-        Exit
-      </button>
-
-      <img
-        src={hazard.image_url}
-        alt={`Dashcam crop of ${hazard.hazard_type} on ${hazard.street}`}
-        className="mt-3 aspect-[3/2] w-full object-cover"
-      />
-
-      <div className="mt-3 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{label(hazard)}</h2>
-        <SeverityBadge hazard={hazard} />
+    <div>
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2 text-sm">
+        <button type="button" onClick={onBack} className="text-slate-700 hover:text-slate-950 hover:underline">
+          Exit
+        </button>
+        <span className="font-mono text-xs text-slate-500">{ticketId(hazard)}</span>
       </div>
-      <p className="text-sm text-slate-500">{hazard.street}</p>
 
-      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-        <Field term="Status">
-          <span className={`px-1.5 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[hazard.status]}`}>
-            {hazard.status}
-          </span>
-        </Field>
-        <Field term="Reports">{hazard.report_count}</Field>
-        <Field term="Confidence">{Math.round(hazard.confidence * 100)}%</Field>
-        <Field term="Device">{hazard.device_id}</Field>
-        <Field term="Detected">{formatTime(hazard.detected_at)}</Field>
-        <Field term="Coordinates">
-          {hazard.lat.toFixed(5)}, {hazard.lon.toFixed(5)}
-        </Field>
+      <figure className="relative bg-black">
+        <img
+          src={hazard.image_url}
+          alt={`Dashcam crop of ${hazard.hazard_type} on ${hazard.street}`}
+          className="aspect-[3/2] w-full object-cover"
+        />
+        <figcaption className="absolute inset-x-0 bottom-0 flex justify-end bg-black/55 px-2 py-1 font-mono text-[11px] text-white/90">
+          <span>{hazard.detected_at.replace("T", " ").replace("Z", " UTC")}</span>
+        </figcaption>
+      </figure>
+
+      <div className="border-l-4 px-4 pt-3 pb-1" style={{ borderColor: pinColor(hazard) }}>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-base font-semibold">{label(hazard)}</h2>
+          <SeverityTag hazard={hazard} />
+        </div>
+        <p className="text-sm text-slate-600">{hazard.street}</p>
+      </div>
+
+      <dl className="mt-2 divide-y divide-slate-100 border-y border-slate-100 text-sm">
+        <Row term="Status">{STATUS_LABEL[hazard.status]}</Row>
+        <Row term="Times reported">{hazard.report_count}</Row>
+        <Row term="Detected">
+          {formatTime(hazard.detected_at)}
+          <span className="text-slate-500"> ({timeAgo(hazard.detected_at)})</span>
+        </Row>
+        <Row term="Model confidence">{Math.round(hazard.confidence * 100)}%</Row>
+        <Row term="Vehicle heading">
+          {Math.round(hazard.heading_deg)}° {compass(hazard.heading_deg)}
+        </Row>
+        <Row term="Location">
+          <span className="font-mono text-xs">{coords}</span>
+          <button
+            type="button"
+            onClick={copyCoords}
+            className="ml-2 text-xs text-slate-500 underline-offset-2 hover:text-slate-900 hover:underline"
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </Row>
       </dl>
     </div>
   );
 }
 
-function Field({ term, children }: { term: string; children: React.ReactNode }) {
+function Row({ term, children }: { term: string; children: React.ReactNode }) {
   return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-400">{term}</dt>
-      <dd className="mt-0.5 text-slate-800">{children}</dd>
+    <div className="flex items-baseline justify-between gap-4 px-4 py-2">
+      <dt className="shrink-0 text-slate-500">{term}</dt>
+      <dd className="text-right text-slate-900 tabular-nums">{children}</dd>
     </div>
   );
 }

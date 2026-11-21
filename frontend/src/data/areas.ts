@@ -15,7 +15,6 @@ export interface UsState {
   bbox: BBox;
 }
 
-// Approximate state bounding boxes [west, south, east, north].
 const STATE_BOUNDS: [code: string, name: string, bbox: BBox][] = [
   ["AL", "Alabama", [-88.47, 30.22, -84.89, 35.01]],
   ["AK", "Alaska", [-170.0, 51.2, -129.98, 71.39]],

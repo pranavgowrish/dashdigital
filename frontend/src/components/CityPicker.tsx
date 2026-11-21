@@ -25,7 +25,7 @@ export function CityPicker({ stateName, cities, loading, error, value, onChange 
           ...cities.filter((c) => c.name.toLowerCase().startsWith(q)),
           ...cities.filter((c) => !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q)),
         ]
-      : [...cities].sort((a, b) => b.population - a.population) // biggest first when empty
+      : [...cities].sort((a, b) => b.population - a.population)
   ).slice(0, MAX_RESULTS);
 
   const choose = (city: CityOption | null) => {

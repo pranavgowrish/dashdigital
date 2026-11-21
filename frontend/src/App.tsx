@@ -144,9 +144,6 @@ function App() {
             className="absolute right-4 top-4 z-10 flex items-center gap-2 border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-md hover:bg-slate-50"
           >
             Hazard Triage
-            <span className="bg-red-100 px-1.5 text-xs font-semibold text-red-700">
-              {locationHazards.filter((h) => h.status !== "resolved").length}
-            </span>
           </button>
         )}
       </main>

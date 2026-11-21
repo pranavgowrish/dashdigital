@@ -63,17 +63,11 @@ function buildHazardLayer(hazards: Hazard[]) {
   });
 }
 
-/**
- * ArcGIS MapView needs WebGL2; without it the map stays blank.
- * The answer can change: a tab opened in the background, or a GPU process that is
- * still starting or restarting, fails at first and works moments later. So this is
- * checked again (see HazardMap) instead of being decided once at page load.
- */
 function checkWebGL2(): boolean {
   try {
     const gl = document.createElement("canvas").getContext("webgl2");
     if (!gl) return false;
-    gl.getExtension("WEBGL_lose_context")?.loseContext(); // free the test context right away
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
     return true;
   } catch {
     return false;
@@ -81,7 +75,7 @@ function checkWebGL2(): boolean {
 }
 
 const RETRY_MS = 1500;
-const MAX_AUTO_RETRIES = 20; // ~30 s of automatic retries, then only the button / tab focus
+const MAX_AUTO_RETRIES = 20;
 
 function NoWebGLMessage({ onRetry }: { onRetry: () => void }) {
   return (
@@ -117,8 +111,6 @@ function NoWebGLMessage({ onRetry }: { onRetry: () => void }) {
 export function HazardMap(props: HazardMapProps) {
   const [glReady, setGlReady] = useState(checkWebGL2);
 
-  // While WebGL2 is unavailable, keep re-checking: on a timer, and whenever the tab
-  // becomes visible or focused (the usual moment a background tab gets its GPU).
   useEffect(() => {
     if (glReady) return;
     let tries = 0;
@@ -169,7 +161,6 @@ function HazardMapView({ hazards, selectedId, onSelect, mapRef }: HazardMapProps
     onSelect(hit && "graphic" in hit ? (hit.graphic.attributes.ObjectID as number) : null);
   };
 
-  // Highlight the selected pin on the map.
   useEffect(() => {
     const mapEl = mapRef.current;
     const layer = layerRef.current;

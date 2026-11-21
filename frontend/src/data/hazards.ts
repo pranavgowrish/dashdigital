@@ -1,6 +1,3 @@
-// Hazard records, shaped like the attributes on Person 3's hosted Feature Layer.
-// These are MOCK records for local testing. Swap for the real FeatureLayer URL later.
-
 export type Severity = "High" | "Medium" | "Low";
 export type HazardStatus = "open" | "dispatched" | "resolved";
 
@@ -103,7 +100,6 @@ export const MOCK_HAZARDS: Hazard[] = [
     image_url: "/mock/pothole-4.jpg",
   },
 
-  // Upland
   {
     objectId: 6,
     hazard_type: "pothole",
@@ -137,7 +133,6 @@ export const MOCK_HAZARDS: Hazard[] = [
     image_url: "/mock/crack-1.jpg",
   },
 
-  // Los Angeles
   {
     objectId: 8,
     hazard_type: "pothole",
