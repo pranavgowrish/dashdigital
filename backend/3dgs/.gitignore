@@ -1,0 +1,6 @@
+out/
+*.ply
+*.mp4
+.venv/
+__pycache__/
+.DS_Store
