@@ -30,9 +30,6 @@ function SeverityTag({ hazard }: { hazard: Hazard }) {
 
 const ticketId = (h: Hazard) => `HZ-${String(h.objectId).padStart(4, "0")}`;
 
-const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-const compass = (deg: number) => COMPASS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
-
 function timeAgo(iso: string) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (mins < 1) return "just now";
@@ -312,10 +309,6 @@ function HazardDetail({ hazard, onBack }: { hazard: Hazard; onBack: () => void }
         <Row term="Detected">
           {formatTime(hazard.detected_at)}
           <span className="text-slate-500"> ({timeAgo(hazard.detected_at)})</span>
-        </Row>
-        <Row term="Model confidence">{Math.round(hazard.confidence * 100)}%</Row>
-        <Row term="Vehicle heading">
-          {Math.round(hazard.heading_deg)}° {compass(hazard.heading_deg)}
         </Row>
         <Row term="Location">
           <span className="font-mono text-xs">{coords}</span>
