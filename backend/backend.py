@@ -3,13 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import base64
 import io
-import subprocess
-import sys
 from pathlib import Path
 from PIL import Image
 from models import PotholeLocation
 import math
 from pyproj import CRS, Transformer
+from astrapy import DataAPIClient
+from dotenv import load_dotenv
+import uuid
+import os
 
 app = FastAPI()
 
@@ -25,6 +27,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+load_dotenv()
+
+client = DataAPIClient()
+db = client.get_database(
+    api_endpoint=os.getenv("ASTRA_DB_API_ENDPOINT"),
+    token=os.getenv("ASTRA_DB_APPLICATION_TOKEN")
+)
+
+print(f"Connected to Astra DB: {db.list_collection_names()}")
+
+issues_table = db.get_table("issues")
 
 def ground_plane_spatial_projection(PotHoleData: PotholeLocation):
     x_min, y_min, x_max, y_max = PotHoleData.detection.bbox_norm
@@ -79,20 +93,22 @@ def find_pothole_location(PotHoleData: PotholeLocation):
     
     hazard_location = ground_plane_spatial_projection(PotHoleData)
 
+    result = issues_table.insert_one(
+        {
+            "id": str(uuid.uuid4()),
+            "detected_at": PotHoleData.capture_time,
+            "hazard_lat": hazard_location[0],
+            "hazard_lon": hazard_location[1],
+            "image_base64": PotHoleData.crop_jpeg_base64,
+            "status": "severe", #Fix ts with actual severity classification logic
+        }
+    )
+
     return {
-        "device_id": PotHoleData.device_id,
-        "capture_time": PotHoleData.capture_time,
-        "gps": PotHoleData.gps,
-        "detection": PotHoleData.detection,
-        "crop_jpeg_base64": PotHoleData.crop_jpeg_base64,
-        "hazard_location": hazard_location
+        "message": "Pothole location calculated and stored successfully.",
     }
 
-    # if sys.platform == "darwin":
-    #     image_path = Path("/tmp") / f"dashdigital-pothole-{PotHoleData.device_id}.jpg"
-    #     image.save(image_path, format="JPEG")
-    #     subprocess.run(["open", str(image_path)], check=False)
-    # else:
-    #     image.show(title=f"Pothole crop - {PotHoleData.device_id}")
-    
-    # return PotHoleData
+
+@app.get("/getPotholeDataFromDatabase")
+def get_pothole_data_from_database():
+    return {"pothole_data": list(issues_table.find())}

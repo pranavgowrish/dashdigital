@@ -2,3 +2,5 @@ fastapi[standard]
 uvicorn
 Pillow
 pyproj
+astrapy
+python-dotenv
