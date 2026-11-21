@@ -12,8 +12,8 @@ export interface Hazard {
   status: HazardStatus;
   report_count: number;
   device_id: string;
-  state: string; // two-letter US state code, e.g. "CA"
-  detected_at: string; // ISO 8601 UTC
+  state: string;
+  detected_at: string;
   heading_deg: number;
   lat: number;
   lon: number;
@@ -188,7 +188,6 @@ export const MOCK_HAZARDS: Hazard[] = [
   },
 ];
 
-/** Distance in metres between two lat/lon points (haversine). */
 export function distanceMeters(
   lat1: number,
   lon1: number,

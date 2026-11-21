@@ -9,7 +9,6 @@ import { STATES, USA_TARGET, hazardInLocation, type MapTarget } from "./data/are
 import { fetchCities, fetchCityBoundary, type CityOption } from "./data/cities";
 import { MOCK_HAZARDS } from "./data/hazards";
 
-/** Turn a map target into something MapView.goTo() understands. */
 function goToTarget(target: MapTarget) {
   if ("bbox" in target) {
     const [xmin, ymin, xmax, ymax] = target.bbox;
@@ -26,7 +25,7 @@ const BOUNDARY_SYMBOL = {
 
 function App() {
   const mapRef = useRef<HTMLArcgisMapElement | null>(null);
-  const [stateCode, setStateCode] = useState<string | null>(null); // no location by default
+  const [stateCode, setStateCode] = useState<string | null>(null);
   const [cities, setCities] = useState<CityOption[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [citiesError, setCitiesError] = useState<string | null>(null);
@@ -34,10 +33,8 @@ function App() {
   const [cityBoundary, setCityBoundary] = useState<Polygon | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
-  // Guards against slow responses for an older selection overwriting a newer one.
   const latestState = useRef<string | null>(null);
   const latestCity = useRef<number | null>(null);
-  // Map view from just before we zoomed in on a hazard, so Exit can go back to it.
   const viewBeforeHazard = useRef<Viewpoint | null>(null);
 
   const state = STATES.find((s) => s.code === stateCode) ?? null;
@@ -108,19 +105,17 @@ function App() {
 
   const selectHazard = (objectId: number | null) => {
     const h = hazards.find((x) => x.objectId === objectId);
-    // Remember the view only when coming from the overview, not when hopping hazard to hazard.
     if (h && selectedId == null) {
       viewBeforeHazard.current = mapRef.current?.viewpoint?.clone() ?? null;
     }
-    if (!h) viewBeforeHazard.current = null; // deselected on the map: stay where we are
+    if (!h) viewBeforeHazard.current = null;
     setSelectedId(objectId);
     if (h) {
-      setPanelOpen(true); // clicking a pin always shows its details
+      setPanelOpen(true);
       flyTo({ center: [h.lon, h.lat], zoom: 17 });
     }
   };
 
-  /** Exit button: close the hazard and zoom back to the view we were on before. */
   const exitHazard = () => {
     setSelectedId(null);
     const previous = viewBeforeHazard.current;

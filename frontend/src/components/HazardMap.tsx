@@ -22,7 +22,6 @@ const marker = (color: string) => ({
   outline: { color: "white", width: 2 },
 });
 
-/** Client-side FeatureLayer built from mock hazards. Same fields as the real hosted layer. */
 function buildHazardLayer(hazards: Hazard[]) {
   return new FeatureLayer({
     title: "Road hazards",
@@ -49,7 +48,6 @@ function buildHazardLayer(hazards: Hazard[]) {
           },
         }),
     ),
-    // Red = High, Amber = Medium, Yellow = Low, Green = resolved
     renderer: {
       type: "unique-value",
       valueExpression:

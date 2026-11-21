@@ -1,13 +1,8 @@
-// Locations for the picker: every US state (and DC). Cities are loaded per state (see cities.ts).
-// A state zooms to its bounding box and includes hazards tagged with its state code.
-// A city zooms to its boundary and includes hazards inside that boundary.
-
 import Point from "@arcgis/core/geometry/Point.js";
 import type Polygon from "@arcgis/core/geometry/Polygon.js";
 import * as containsOperator from "@arcgis/core/geometry/operators/containsOperator.js";
 import type { Hazard } from "./hazards";
 
-/** [west, south, east, north] in degrees. */
 export type BBox = [number, number, number, number];
 
 export type MapTarget =
@@ -77,19 +72,13 @@ const STATE_BOUNDS: [code: string, name: string, bbox: BBox][] = [
 
 export const STATES: UsState[] = STATE_BOUNDS.map(([code, name, bbox]) => ({ code, name, bbox }));
 
-/** Contiguous USA, used when the location is cleared. */
 export const USA_TARGET: MapTarget = { bbox: [-125, 24.5, -66.9, 49.4] };
 
-/** Where the map opens before any location is picked: the whole contiguous USA. */
 export const INITIAL_VIEW: { center: [number, number]; zoom: number } = {
   center: [-98.5, 39.5],
   zoom: 4,
 };
 
-/**
- * Which hazards belong to the current selection:
- * inside the city boundary if a city is picked, else in the state, else everything.
- */
 export function hazardInLocation(h: Hazard, state: UsState | null, cityBoundary: Polygon | null): boolean {
   if (cityBoundary) {
     return containsOperator.execute(

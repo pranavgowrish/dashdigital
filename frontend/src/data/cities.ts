@@ -1,16 +1,12 @@
-// Every US city / town / census-designated place, from Esri Living Atlas
-// "USA Census Populated Places" (public, no API key). About 31,600 places in total,
-// at most ~1,900 per state, so one query per state fits under the 2,000-record limit.
-
 import Polygon from "@arcgis/core/geometry/Polygon.js";
 
 const PLACES_URL =
   "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Census_Populated_Places/FeatureServer/0/query";
 
 export interface CityOption {
-  id: number; // FID in the Living Atlas layer
+  id: number;
   name: string;
-  kind: string; // "city" | "town" | "Census Designated Place"
+  kind: string;
   population: number;
 }
 
@@ -24,8 +20,6 @@ async function query(params: Record<string, string>) {
   if (json.error) throw new Error(json.error.message ?? "Cities request failed");
   return json.features as { attributes: Record<string, unknown>; geometry?: unknown }[];
 }
-
-/** All places in a state, sorted by name. Cached per state. */
 export function fetchCities(stateCode: string): Promise<CityOption[]> {
   let pending = cityCache.get(stateCode);
   if (!pending) {
@@ -49,7 +43,6 @@ export function fetchCities(stateCode: string): Promise<CityOption[]> {
   return pending;
 }
 
-/** The boundary polygon of one place (WGS84). Cached per place. */
 export function fetchCityBoundary(id: number): Promise<Polygon | null> {
   let pending = boundaryCache.get(id);
   if (!pending) {

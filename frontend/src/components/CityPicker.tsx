@@ -12,7 +12,6 @@ interface CityPickerProps {
   onChange: (city: CityOption | null) => void;
 }
 
-/** Type-to-search city picker. Handles ~2,000 places per state. */
 export function CityPicker({ stateName, cities, loading, error, value, onChange }: CityPickerProps) {
   const listId = useId();
   const [query, setQuery] = useState("");
@@ -23,7 +22,6 @@ export function CityPicker({ stateName, cities, loading, error, value, onChange 
   const matches = (
     q
       ? [
-          // names starting with the query first, then names containing it
           ...cities.filter((c) => c.name.toLowerCase().startsWith(q)),
           ...cities.filter((c) => !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q)),
         ]
@@ -114,7 +112,7 @@ export function CityPicker({ stateName, cities, loading, error, value, onChange 
                 role="option"
                 aria-selected={i === active}
                 onMouseDown={(e) => {
-                  e.preventDefault(); // keep focus so blur doesn't close before click
+                  e.preventDefault();
                   choose(c);
                 }}
                 onMouseEnter={() => setActive(i)}
