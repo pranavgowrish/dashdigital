@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Single Image Splat</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b0d10; overflow: hidden; }
+    #hud { position: absolute; top: 12px; left: 12px; padding: 8px 12px; border-radius: 8px;
+           background: rgba(15, 17, 20, .78); color: #e8eaed; font: 13px/1.45 system-ui, sans-serif; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+        "@sparkjsdev/spark": "https://cdn.jsdelivr.net/npm/@sparkjsdev/spark@2.4.0/dist/spark.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="hud">Loading splat (66 MB)…</div>
+  <script type="module">
+    // Raw ml-sharp output: OpenCV camera frame (x right, y down, z forward), meters.
+    // The photo was taken from the origin looking down +z.
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+
+    const file = new URLSearchParams(location.search).get("file") || "kyiv_sharp.ply";
+    const hud = document.getElementById("hud");
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.add(new SparkRenderer({ renderer }));
+    const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 200);
+    camera.up.set(0, -1, 0);
+    camera.position.set(0, 0, 0);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0.6, 3.6); // roughly the pothole
+    controls.enableDamping = true;
+
+    const splat = new SplatMesh({ url: `splats/${file}` });
+    scene.add(splat);
+    splat.initialized.then(() => {
+      hud.textContent = "ml-sharp, one photo → 3D Gaussians · drag to orbit · right-drag to pan · scroll to zoom";
+      document.title = "READY";
+    }).catch((err) => { hud.textContent = `Failed to load: ${err}`; });
+
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+    renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+  </script>
+</body>
+</html>

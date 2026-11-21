@@ -1,0 +1,33 @@
+{
+  "portal_url": "https://ucr.maps.arcgis.com",
+  "feature_layer_item_id": "6bc96327d96049828e1a8ff03ed0fa70",
+  "feature_service_url": "https://services1.arcgis.com/RCT9RCgW4FY2e7Dk/arcgis/rest/services/dashdigital_road_hazards/FeatureServer",
+  "feature_layer_url": "https://services1.arcgis.com/RCT9RCgW4FY2e7Dk/arcgis/rest/services/dashdigital_road_hazards/FeatureServer/0",
+  "sharing_level": "EVERYONE",
+  "webscene_item_id": "c744dc6317fe4518af927c46db6999c1",
+  "webscene_viewer_url": "https://ucr.maps.arcgis.com/home/webscene/viewer.html?webscene=c744dc6317fe4518af927c46db6999c1",
+  "initial_camera": {
+    "position": {
+      "x": -117.3345,
+      "y": 33.96983104460807,
+      "z": 450.0,
+      "spatialReference": {
+        "wkid": 4326
+      }
+    },
+    "heading": 0.0,
+    "tilt": 65.0
+  },
+  "splat_layers": {
+    "DashDigital Pothole 1 (splat)": {
+      "package_item_id": "62a1bc3f6c7142919f34994f4b0e0aea",
+      "service_item_id": "c86e116f5e8644ca8cf889b0242c20bf",
+      "url": "https://tiles.arcgis.com/tiles/RCT9RCgW4FY2e7Dk/arcgis/rest/services/DashDigital_Pothole_1_splat_/3DTilesServer/tileset.json"
+    },
+    "DashDigital Pothole 1 splat v2": {
+      "package_item_id": "d22a8f229e774ed98eacac9e9ce802d2",
+      "service_item_id": "22ed3ba244a946c896208a02b94350a4",
+      "url": "https://tiles.arcgis.com/tiles/RCT9RCgW4FY2e7Dk/arcgis/rest/services/DashDigital_Pothole_1_splat_v2/3DTilesServer/tileset.json"
+    }
+  }
+}
