@@ -2,12 +2,14 @@ import Graphic from "@arcgis/core/Graphic.js";
 import Extent from "@arcgis/core/geometry/Extent.js";
 import type Polygon from "@arcgis/core/geometry/Polygon.js";
 import type Viewpoint from "@arcgis/core/Viewpoint.js";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HazardMap } from "./components/HazardMap";
 import { Sidebar } from "./components/Sidebar";
 import { STATES, USA_TARGET, hazardInLocation, type MapTarget } from "./data/areas";
-import { fetchCities, fetchCityBoundary, type CityOption } from "./data/cities";
-import { MOCK_HAZARDS } from "./data/hazards";
+import { fetchCities, fetchCityBoundary, fetchStateBoundary, type CityOption } from "./data/cities";
+import { MOCK_HAZARDS, normalizeHazards, type ApiHazard, type Hazard } from "./data/hazards";
+
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 function goToTarget(target: MapTarget) {
   if ("bbox" in target) {
@@ -31,6 +33,7 @@ function App() {
   const [citiesError, setCitiesError] = useState<string | null>(null);
   const [city, setCity] = useState<CityOption | null>(null);
   const [cityBoundary, setCityBoundary] = useState<Polygon | null>(null);
+  const [stateBoundary, setStateBoundary] = useState<Polygon | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const latestState = useRef<string | null>(null);
@@ -38,8 +41,25 @@ function App() {
   const viewBeforeHazard = useRef<Viewpoint | null>(null);
 
   const state = STATES.find((s) => s.code === stateCode) ?? null;
-  const hazards = MOCK_HAZARDS;
-  const locationHazards = hazards.filter((h) => hazardInLocation(h, state, cityBoundary));
+
+  const [hazards, setHazards] = useState<Hazard[]>(MOCK_HAZARDS);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API_URL}/hazards`, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data: ApiHazard[]) => setHazards(normalizeHazards(data)))
+      .catch((err) => {
+        if (err.name !== "AbortError") console.error("Couldn't load hazards", err);
+      });
+    return () => controller.abort();
+  }, []);
+  const locationHazards = hazards.filter((h) =>
+    hazardInLocation(h, state, stateBoundary, cityBoundary),
+  );
   const selected = hazards.find((h) => h.objectId === selectedId) ?? null;
 
   const flyTo = (target: MapTarget | Polygon) => {
@@ -85,10 +105,17 @@ function App() {
     latestState.current = code;
     setCities([]);
     setCitiesError(null);
+    setStateBoundary(null);
 
     const next = STATES.find((s) => s.code === code);
     flyTo(next ? { bbox: next.bbox } : USA_TARGET);
     if (!next) return;
+
+    fetchStateBoundary(next.code)
+      .then((boundary) => {
+        if (latestState.current === next.code) setStateBoundary(boundary);
+      })
+      .catch(() => {});
 
     setCitiesLoading(true);
     fetchCities(next.code)

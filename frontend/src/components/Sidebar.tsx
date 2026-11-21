@@ -28,6 +28,8 @@ function SeverityTag({ hazard }: { hazard: Hazard }) {
   );
 }
 
+const formatCoords = (h: Hazard) => `${h.lat.toFixed(5)}, ${h.lon.toFixed(5)}`;
+
 const ticketId = (h: Hazard) => `HZ-${String(h.objectId).padStart(4, "0")}`;
 
 function timeAgo(iso: string) {
@@ -246,9 +248,9 @@ export function Sidebar({
                       <span className="font-medium">{label(h)}</span>
                       <SeverityTag hazard={h} />
                     </div>
-                    <p className="truncate text-sm text-slate-600">{h.street}</p>
+                    <p className="truncate font-mono text-xs text-slate-600">{formatCoords(h)}</p>
                     <p className="text-xs text-slate-500 tabular-nums">
-                      {ticketId(h)} · {h.report_count}× reported · {timeAgo(h.detected_at)}
+                      {ticketId(h)} · {timeAgo(h.detected_at)}
                     </p>
                   </div>
                 </button>
@@ -264,7 +266,7 @@ export function Sidebar({
 
 function HazardDetail({ hazard, onBack }: { hazard: Hazard; onBack: () => void }) {
   const [copied, setCopied] = useState(false);
-  const coords = `${hazard.lat.toFixed(5)}, ${hazard.lon.toFixed(5)}`;
+  const coords = formatCoords(hazard);
   const copyCoords = () => {
     navigator.clipboard
       ?.writeText(coords)
@@ -287,7 +289,7 @@ function HazardDetail({ hazard, onBack }: { hazard: Hazard; onBack: () => void }
       <figure className="relative bg-black">
         <img
           src={hazard.image_url}
-          alt={`Dashcam crop of ${hazard.hazard_type} on ${hazard.street}`}
+          alt={`Dashcam crop of ${hazard.hazard_type} at ${coords}`}
           className="aspect-3/2 w-full object-cover"
         />
         <figcaption className="absolute inset-x-0 bottom-0 flex justify-end bg-black/55 px-2 py-1 font-mono text-[11px] text-white/90">
@@ -295,17 +297,15 @@ function HazardDetail({ hazard, onBack }: { hazard: Hazard; onBack: () => void }
         </figcaption>
       </figure>
 
-      <div className="border-l-4 px-4 pt-3 pb-1" style={{ borderColor: pinColor(hazard) }}>
+      <div className="border-l-4 px-4 py-3" style={{ borderColor: pinColor(hazard) }}>
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-base font-semibold">{label(hazard)}</h2>
           <SeverityTag hazard={hazard} />
         </div>
-        <p className="text-sm text-slate-600">{hazard.street}</p>
       </div>
 
       <dl className="mt-2 divide-y divide-slate-100 border-y border-slate-100 text-sm">
         <Row term="Status">{STATUS_LABEL[hazard.status]}</Row>
-        <Row term="Times reported">{hazard.report_count}</Row>
         <Row term="Detected">
           {formatTime(hazard.detected_at)}
           <span className="text-slate-500"> ({timeAgo(hazard.detected_at)})</span>

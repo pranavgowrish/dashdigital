@@ -78,13 +78,20 @@ export const INITIAL_VIEW: { center: [number, number]; zoom: number } = {
   zoom: 4,
 };
 
-export function hazardInLocation(h: Hazard, state: UsState | null, cityBoundary: Polygon | null): boolean {
-  if (cityBoundary) {
-    return containsOperator.execute(
-      cityBoundary,
-      new Point({ longitude: h.lon, latitude: h.lat }),
-    );
-  }
-  if (state) return h.state === state.code;
+const insidePolygon = (boundary: Polygon, h: Hazard) =>
+  containsOperator.execute(boundary, new Point({ longitude: h.lon, latitude: h.lat }));
+
+const insideBBox = ([west, south, east, north]: BBox, h: Hazard) =>
+  h.lon >= west && h.lon <= east && h.lat >= south && h.lat <= north;
+
+export function hazardInLocation(
+  h: Hazard,
+  state: UsState | null,
+  stateBoundary: Polygon | null,
+  cityBoundary: Polygon | null,
+): boolean {
+  if (cityBoundary) return insidePolygon(cityBoundary, h);
+  if (stateBoundary) return insidePolygon(stateBoundary, h);
+  if (state) return insideBBox(state.bbox, h);
   return true;
 }

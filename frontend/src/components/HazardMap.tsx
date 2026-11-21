@@ -33,7 +33,6 @@ function buildHazardLayer(hazards: Hazard[]) {
       { name: "hazard_type", type: "string" },
       { name: "severity", type: "string" },
       { name: "status", type: "string" },
-      { name: "report_count", type: "integer" },
     ],
     source: hazards.map(
       (h) =>
@@ -44,7 +43,6 @@ function buildHazardLayer(hazards: Hazard[]) {
             hazard_type: h.hazard_type,
             severity: h.severity,
             status: h.status,
-            report_count: h.report_count,
           },
         }),
     ),
@@ -144,13 +142,24 @@ function HazardMapView({ hazards, selectedId, onSelect, mapRef }: HazardMapProps
   const layerRef = useRef<FeatureLayer | null>(null);
   const highlightRef = useRef<{ remove(): void } | null>(null);
 
-  const handleReady = (event: CustomEvent) => {
-    const mapEl = event.target as HTMLArcgisMapElement;
-    if (!mapEl.ready || layerRef.current) return;
-    const layer = buildHazardLayer(hazards);
+  const attachLayer = (mapEl: HTMLArcgisMapElement, list: Hazard[]) => {
+    if (layerRef.current) mapEl.map?.remove(layerRef.current);
+    const layer = buildHazardLayer(list);
     layerRef.current = layer;
     mapEl.map?.add(layer);
   };
+
+  const handleReady = (event: CustomEvent) => {
+    const mapEl = event.target as HTMLArcgisMapElement;
+    if (!mapEl.ready || layerRef.current) return;
+    attachLayer(mapEl, hazards);
+  };
+
+  useEffect(() => {
+    const mapEl = mapRef.current;
+    if (!mapEl?.ready || !layerRef.current) return;
+    attachLayer(mapEl, hazards);
+  }, [hazards, mapRef]);
 
   const handleClick = async (event: HTMLArcgisMapElement["arcgisViewClick"]) => {
     const mapEl = mapRef.current;
@@ -174,7 +183,7 @@ function HazardMapView({ hazards, selectedId, onSelect, mapRef }: HazardMapProps
     return () => {
       cancelled = true;
     };
-  }, [selectedId, mapRef]);
+  }, [selectedId, hazards, mapRef]);
 
   return (
     <arcgis-map
