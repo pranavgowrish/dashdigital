@@ -7,7 +7,7 @@ import { HazardMap } from "./components/HazardMap";
 import { Sidebar } from "./components/Sidebar";
 import { STATES, USA_TARGET, hazardInLocation, type MapTarget } from "./data/areas";
 import { fetchCities, fetchCityBoundary, fetchStateBoundary, type CityOption } from "./data/cities";
-import { MOCK_HAZARDS, normalizeHazards, type ApiHazard, type Hazard } from "./data/hazards";
+import { hazardList, normalizeHazards, type Hazard } from "./data/hazards";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -42,18 +42,21 @@ function App() {
 
   const state = STATES.find((s) => s.code === stateCode) ?? null;
 
-  const [hazards, setHazards] = useState<Hazard[]>(MOCK_HAZARDS);
+  const [hazards, setHazards] = useState<Hazard[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`${API_URL}/hazards`, { signal: controller.signal })
+    fetch(`${API_URL}/getPotholeDataFromDatabase`, {
+      signal: controller.signal,
+    })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
-      .then((data: ApiHazard[]) => setHazards(normalizeHazards(data)))
+      .then((data) => setHazards(normalizeHazards(hazardList(data))))
       .catch((err) => {
-        if (err.name !== "AbortError") console.error("Couldn't load hazards", err);
+        if (err.name !== "AbortError")
+          console.error("Couldn't load hazards", err);
       });
     return () => controller.abort();
   }, []);

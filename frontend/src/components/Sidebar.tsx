@@ -5,9 +5,15 @@ import { CityPicker } from "./CityPicker";
 import type { Hazard, HazardStatus, Severity } from "../data/hazards";
 
 const SEVERITY_COLOR: Record<Severity, string> = {
-  High: "#dc2626",
-  Medium: "#f59e0b",
-  Low: "#eab308",
+  high: "#dc2626",
+  medium: "#f59e0b",
+  low: "#eab308",
+};
+
+const SEVERITY_LABEL: Record<Severity, string> = {
+  high: "High",
+  medium: "Medium",
+  low: "Low",
 };
 const RESOLVED_COLOR = "#16a34a";
 
@@ -23,7 +29,7 @@ function SeverityTag({ hazard }: { hazard: Hazard }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-slate-700">
       <span className="h-2.5 w-2.5" style={{ background: pinColor(hazard) }} />
-      {hazard.status === "resolved" ? "Resolved" : hazard.severity}
+      {hazard.status === "resolved" ? "Resolved" : SEVERITY_LABEL[hazard.severity]}
     </span>
   );
 }
@@ -154,7 +160,7 @@ export function Sidebar({
   onExit,
 }: SidebarProps) {
   const active = hazards.filter((h) => h.status !== "resolved").length;
-  const high = hazards.filter((h) => h.status !== "resolved" && h.severity === "High").length;
+  const high = hazards.filter((h) => h.status !== "resolved" && h.severity === "high").length;
   const placeName = city?.name ?? state?.name ?? "any location";
   const [width, setWidth] = useState(loadWidth);
   const resize = (w: number) => {

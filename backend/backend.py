@@ -100,7 +100,9 @@ def find_pothole_location(PotHoleData: PotholeLocation):
             "hazard_lat": hazard_location[0],
             "hazard_lon": hazard_location[1],
             "image_base64": PotHoleData.crop_jpeg_base64,
-            "status": "severe", #Fix ts with actual severity classification logic
+            "status": "open", #Fix ts with actual severity classification logic
+            "severity": "medium",
+            "hazard_type": "pothole"
         }
     )
 

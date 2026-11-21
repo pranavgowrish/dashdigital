@@ -51,9 +51,9 @@ function buildHazardLayer(hazards: Hazard[]) {
       valueExpression:
         "IIf($feature.status == 'resolved', 'resolved', $feature.severity)",
       uniqueValueInfos: [
-        { value: "High", label: "High", symbol: marker("#dc2626") },
-        { value: "Medium", label: "Medium", symbol: marker("#f59e0b") },
-        { value: "Low", label: "Low", symbol: marker("#eab308") },
+        { value: "high", label: "High", symbol: marker("#dc2626") },
+        { value: "medium", label: "Medium", symbol: marker("#f59e0b") },
+        { value: "low", label: "Low", symbol: marker("#eab308") },
         { value: "resolved", label: "Resolved", symbol: marker("#16a34a") },
       ],
       defaultSymbol: marker("#64748b"),
