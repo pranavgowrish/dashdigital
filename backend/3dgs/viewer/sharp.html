@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pothole Splat</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b0d10; overflow: hidden; }
+    #hud { position: absolute; top: 12px; left: 12px; max-width: min(90vw, 560px);
+           padding: 8px 12px; border-radius: 8px; background: rgba(15, 17, 20, .78);
+           color: #e8eaed; font: 13px/1.45 system-ui, sans-serif; }
+    #hud code { color: #9fd0ff; font-size: 12px; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+        "@sparkjsdev/spark": "https://cdn.jsdelivr.net/npm/@sparkjsdev/spark@2.4.0/dist/spark.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="hud">Loading…</div>
+  <script type="module">
+    // Raw SHARP output: OpenCV camera frame (x right, y down, z forward), metric.
+    // The photo was taken from the origin looking down +z, so the pothole sits at
+    // roughly (0, 0, +z) a few meters out.
+    //
+    //   python -m http.server 8000      (from the esri/ folder)
+    //   localhost:8000/viewer/sharp.html?file=out/pothole.ply
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+
+    const params = new URLSearchParams(location.search);
+    const file = params.get("file") || "out/pothole.ply";
+    // ?file= is relative to the server root; this page lives one level down in viewer/.
+    const url = /^(https?:|\/)/.test(file) ? file : `../${file}`;
+    const hud = document.getElementById("hud");
+
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.add(new SparkRenderer({ renderer }));
+    const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 200);
+    camera.up.set(0, -1, 0);           // y is down in SHARP's frame
+    camera.position.set(0, 0, 0);      // start at the photo's viewpoint
+    const controls = new OrbitControls(camera, renderer.domElement);
+    const look = (params.get("look") || "0,0.4,3").split(",").map(Number);
+    controls.target.set(look[0], look[1], look[2]);
+    controls.enableDamping = true;
+
+    hud.textContent = `Loading ${file}…`;
+    const splat = new SplatMesh({ url });
+    scene.add(splat);
+    splat.initialized.then(() => {
+      hud.innerHTML = "SHARP: one photo &rarr; 3D Gaussians &middot; " +
+        "drag to orbit &middot; right-drag to pan &middot; scroll to zoom";
+      document.title = "READY";
+    }).catch((err) => {
+      hud.innerHTML = `Failed to load <code>${url}</code><br>${err}<br><br>` +
+        "Serve the <code>esri/</code> folder and pass the .ply path, e.g. " +
+        "<code>?file=out/pothole.ply</code>";
+    });
+
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+    renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+  </script>
+</body>
+</html>

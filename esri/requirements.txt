@@ -1,5 +1,0 @@
-# Person 3 (Esri 3D digital twin) tooling. Tested on Python 3.12.
-arcgis==2.4.4
-python-dotenv==1.2.4
-pillow==13.0.0
-six==1.17.0  # arcgis 2.4.4 imports it but does not declare it
