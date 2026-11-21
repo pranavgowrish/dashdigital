@@ -114,3 +114,12 @@ def find_pothole_location(PotHoleData: PotholeLocation):
 @app.get("/getPotholeDataFromDatabase")
 def get_pothole_data_from_database():
     return {"pothole_data": list(issues_table.find())}
+
+@app.delete("/deletePotholeDataFromDatabase/{pothole_id}")
+def delete_pothole_data_from_database(pothole_id):
+    if (issues_table.find_one({"id": pothole_id})) is None:
+        return
+
+    issues_table.delete_one({"id" : pothole_id})
+    return {"deleted": str(pothole_id)}
+    

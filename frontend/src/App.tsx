@@ -155,6 +155,16 @@ function App() {
     else if (state) flyTo({ bbox: state.bbox });
   };
 
+  const deleteHazard = async (hazard: Hazard) => {
+    const res = await fetch(
+      `${API_URL}/deletePotholeDataFromDatabase/${encodeURIComponent(hazard.id)}`,
+      { method: "DELETE" },
+    );
+    if (!res.ok) throw new Error(`Delete failed (HTTP ${res.status})`);
+    exitHazard();
+    setHazards((list) => list.filter((h) => h.id !== hazard.id));
+  };
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-100 text-slate-900">
       <main className="relative min-w-60 flex-1">
@@ -191,6 +201,7 @@ function App() {
         selected={selected}
         onSelect={selectHazard}
         onExit={exitHazard}
+        onDelete={deleteHazard}
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
       />

@@ -139,6 +139,7 @@ interface SidebarProps {
   selected: Hazard | null;
   onSelect: (objectId: number | null) => void;
   onExit: () => void;
+  onDelete: (hazard: Hazard) => Promise<void>;
   open: boolean;
   onClose: () => void;
 }
@@ -158,6 +159,7 @@ export function Sidebar({
   selected,
   onSelect,
   onExit,
+  onDelete,
 }: SidebarProps) {
   const active = hazards.filter((h) => h.status !== "resolved").length;
   const high = hazards.filter((h) => h.status !== "resolved" && h.severity === "high").length;
@@ -232,7 +234,7 @@ export function Sidebar({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {selected ? (
-          <HazardDetail hazard={selected} onBack={onExit} />
+          <HazardDetail key={selected.id} hazard={selected} onBack={onExit} onDelete={onDelete} />
         ) : hazards.length === 0 ? (
           <p className="p-4 text-sm text-slate-500">No hazards reported in {placeName}.</p>
         ) : (
@@ -270,8 +272,28 @@ export function Sidebar({
   );
 }
 
-function HazardDetail({ hazard, onBack }: { hazard: Hazard; onBack: () => void }) {
+function HazardDetail({
+  hazard,
+  onBack,
+  onDelete,
+}: {
+  hazard: Hazard;
+  onBack: () => void;
+  onDelete: (hazard: Hazard) => Promise<void>;
+}) {
   const [copied, setCopied] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const confirmDelete = () => {
+    setDeleting(true);
+    setDeleteError(null);
+    onDelete(hazard).catch((err: Error) => {
+      setDeleteError(err.message || "Delete failed");
+      setDeleting(false);
+    });
+  };
   const coords = formatCoords(hazard);
   const copyCoords = () => {
     navigator.clipboard
@@ -327,6 +349,46 @@ function HazardDetail({ hazard, onBack }: { hazard: Hazard; onBack: () => void }
           </button>
         </Row>
       </dl>
+
+      <div className="px-4 py-4">
+        {!confirming ? (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+          >
+            Delete hazard
+          </button>
+        ) : (
+          <div className="border border-red-200 bg-red-50 p-3 text-sm">
+            <p className="text-red-900">
+              Permanently delete {ticketId(hazard)} from the database? This can't be undone.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="bg-red-600 px-3 py-1.5 font-medium text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {deleting ? "Deleting…" : "Yes, delete"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirming(false);
+                  setDeleteError(null);
+                }}
+                disabled={deleting}
+                className="border border-slate-300 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+            {deleteError && <p className="mt-2 text-red-700">{deleteError}</p>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
