@@ -7,9 +7,16 @@ import subprocess
 import sys
 from pathlib import Path
 from PIL import Image
-from models import PotholeLocation 
+from models import PotholeLocation
+import math
+from pyproj import CRS, Transformer
 
 app = FastAPI()
+
+# Synthetic fixture assumption; replace with the camera's calibrated pitch.
+CAMERA_PITCH_DOWN_DEG = 20.0
+CAMERA_HFOV_DEG = 105.0
+CAMERA_VFOV_DEG = 75.0
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,11 +26,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def ground_plane_spatial_projection():
-    # Placeholder for the actual ground plane spatial projection logic
-    pass
+def ground_plane_spatial_projection(PotHoleData: PotholeLocation):
+    x_min, y_min, x_max, y_max = PotHoleData.detection.bbox_norm
 
-@app.post("/findPotholeLocation", response_model=PotholeLocation)
+    mount_height_m = 1.27 #Assuming for a Honda Clarity Plugin Hybrid 2021
+
+    u_norm = ((x_min + x_max) / 2 - 0.5) * 2.0
+    v_norm = (y_max - 0.5) * 2.0
+
+    alpha = math.atan(u_norm * math.tan(math.radians(CAMERA_HFOV_DEG / 2.0)))
+    beta = math.atan(v_norm * math.tan(math.radians(CAMERA_VFOV_DEG / 2.0)))
+
+    total_pitch = math.radians(CAMERA_PITCH_DOWN_DEG) + beta
+
+    if total_pitch <= math.radians(2.0):
+        return None
+
+    d_forward = mount_height_m / math.tan(total_pitch)
+    r_ground = d_forward * math.cos(alpha)
+
+    if r_ground > 50.0:
+        return None
+
+    utm_zone = int((PotHoleData.gps.lon + 180) / 6) + 1
+    epsg_code = (32600 if PotHoleData.gps.lat >= 0 else 32700) + utm_zone
+    crs_utm = CRS.from_epsg(epsg_code)
+    wgs84_crs = CRS.from_epsg(4326)
+
+    to_utm = Transformer.from_crs(wgs84_crs, crs_utm, always_xy=True)
+    to_wgs84 = Transformer.from_crs(crs_utm, wgs84_crs, always_xy=True)
+
+    easting, northing = to_utm.transform(PotHoleData.gps.lon, PotHoleData.gps.lat)
+
+    bearing_rad = math.radians(PotHoleData.gps.heading_degree) + alpha
+    hazard_easting = easting + r_ground * math.sin(bearing_rad)
+    hazard_northing = northing + r_ground * math.cos(bearing_rad)
+
+    hazard_lon, hazard_lat = to_wgs84.transform(hazard_easting, hazard_northing)
+
+    return round(hazard_lat, 7), round(hazard_lon, 6)
+
+@app.post("/findPotholeLocation")
 def find_pothole_location(PotHoleData: PotholeLocation):
 
     image_bytes = base64.b64decode(PotHoleData.crop_jpeg_base64)
@@ -34,13 +77,22 @@ def find_pothole_location(PotHoleData: PotholeLocation):
     # image_path = Path("/tmp") / f"dashdigital-pothole-{PotHoleData.device_id}.jpg"
     # image.save(image_path, format="JPEG")
     
-    bottom_center = PotHoleData.detection.bbox_norm[0] + (PotHoleData.detection.bbox_norm[2] - PotHoleData.detection.bbox_norm[0]) / 2, PotHoleData.detection.bbox_norm[3]
+    hazard_location = ground_plane_spatial_projection(PotHoleData)
 
-    if sys.platform == "darwin":
-        image_path = Path("/tmp") / f"dashdigital-pothole-{PotHoleData.device_id}.jpg"
-        image.save(image_path, format="JPEG")
-        subprocess.run(["open", str(image_path)], check=False)
-    else:
-        image.show(title=f"Pothole crop - {PotHoleData.device_id}")
+    return {
+        "device_id": PotHoleData.device_id,
+        "capture_time": PotHoleData.capture_time,
+        "gps": PotHoleData.gps,
+        "detection": PotHoleData.detection,
+        "crop_jpeg_base64": PotHoleData.crop_jpeg_base64,
+        "hazard_location": hazard_location
+    }
+
+    # if sys.platform == "darwin":
+    #     image_path = Path("/tmp") / f"dashdigital-pothole-{PotHoleData.device_id}.jpg"
+    #     image.save(image_path, format="JPEG")
+    #     subprocess.run(["open", str(image_path)], check=False)
+    # else:
+    #     image.show(title=f"Pothole crop - {PotHoleData.device_id}")
     
-    return PotHoleData
+    # return PotHoleData

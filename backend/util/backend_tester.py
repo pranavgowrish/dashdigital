@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from urllib import request
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
 
 URL = "http://127.0.0.1:8000/findPotholeLocation"
@@ -36,9 +36,14 @@ FAKE_POTHOLE_DATA = {
     "detection": {
         "detection_class": "pothole",
         "confidence": 0.94,
-        "bbox_norm": [0.32, 0.45, 0.58, 0.72],
-        "image_width": 1920,
-        "image_height": 1080,
+        "bbox_norm": [
+            371 / 1148,
+            529 / 1150,
+            921 / 1148,
+            733 / 1150,
+        ],
+        "image_width": 1148,
+        "image_height": 1150,
     },
     "crop_jpeg_base64": convert_image_to_base64_string(IMAGE_PATH),
 }
