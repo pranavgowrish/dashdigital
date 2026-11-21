@@ -8,6 +8,7 @@ from PIL import Image
 
 
 URL = "http://127.0.0.1:8000/findPotholeLocation"
+DATABASE_URL = "http://127.0.0.1:8000/getPotholeDataFromDatabase"
 
 
 def convert_image_to_base64_string(image_path):
@@ -62,5 +63,16 @@ def call_find_pothole_location():
         return json.loads(response.read().decode("utf-8"))
 
 
+def test_database_retrieval():
+    http_request = request.Request(DATABASE_URL, method="GET")
+
+    with request.urlopen(http_request) as response:
+        result = json.loads(response.read().decode("utf-8"))
+
+    print(json.dumps(result, indent=2))
+
+
 if __name__ == "__main__":
-    print(json.dumps(call_find_pothole_location(), indent=2))
+    # print(json.dumps(call_find_pothole_location(), indent=2))
+    test_database_retrieval()
+    print("Alr we good twin")
