@@ -291,7 +291,7 @@ function HazardDetail({ hazard, onBack }: { hazard: Hazard; onBack: () => void }
         <img
           src={hazard.image_url}
           alt={`Dashcam crop of ${hazard.hazard_type} on ${hazard.street}`}
-          className="aspect-[3/2] w-full object-cover"
+          className="aspect-3/2 w-full object-cover"
         />
         <figcaption className="absolute inset-x-0 bottom-0 flex justify-end bg-black/55 px-2 py-1 font-mono text-[11px] text-white/90">
           <span>{hazard.detected_at.replace("T", " ").replace("Z", " UTC")}</span>
