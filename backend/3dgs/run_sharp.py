@@ -17,7 +17,7 @@ GSV_PITCH_DEG = -GSV_PITCH_DOWN_DEG
 DASHCAM_FOV_DEG = 105.0
 
 SHARP_DEVICE = "mps"
-SHARP_BIN = Path(__file__).parent / ".venv" / "bin" / "sharp"  # ml-sharp submodule installed into 3dgs/.venv
+SHARP_BIN = Path(__file__).parent.parent / ".venv" / "bin" / "sharp"  # ml-sharp submodule installed into backend/.venv
 OUTPUT_DIR = Path(__file__).parent / "out"
 
 DIAG_35MM = math.hypot(36.0, 24.0)  # 43.267 mm, the 35mm-film diagonal SHARP normalizes to

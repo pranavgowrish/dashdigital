@@ -7,3 +7,5 @@ python-dotenv
 requests
 numpy
 plyfile
+
+-e ./3dgs/ml-sharp  # Apple SHARP (git submodule); installs torch, so run pip from backend/

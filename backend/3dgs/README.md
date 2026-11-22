@@ -28,18 +28,20 @@ with the origin on the ground below the Street View camera.
 ## Install
 
 SHARP is Apple's [ml-sharp](https://github.com/apple/ml-sharp), checked in as a git submodule at
-`ml-sharp/`. It has its own torch stack, so it gets its own venv at `3dgs/.venv` (gitignored),
-separate from the backend's:
+`ml-sharp/`. It installs into the backend's own venv through `backend/requirements.txt`:
 
 ```bash
 git submodule update --init                     # after cloning dashdigital
-cd backend/3dgs
+cd backend
 python3.12 -m venv .venv
-cd ml-sharp && ../.venv/bin/pip install -r requirements.txt && cd ..
+.venv/bin/pip install -r requirements.txt       # run from backend/; pulls in torch (~1-2 GB)
 .venv/bin/sharp --help
 ```
 
-`run_sharp.py` runs `3dgs/.venv/bin/sharp` by default; set `SHARP_BIN` in `.env` to use another one.
+Don't install ml-sharp's own pinned `ml-sharp/requirements.txt` into this venv: it downgrades
+`typing-extensions` and breaks FastAPI.
+
+`run_sharp.py` runs `backend/.venv/bin/sharp` by default; set `SHARP_BIN` in `.env` to use another one.
 The 2.8 GB checkpoint downloads to `~/.cache/torch/hub/checkpoints/` on the first run, or set
 `SHARP_CHECKPOINT` to a local `.pt`. The weights are under Apple's own model license
 (`LICENSE_MODEL` in ml-sharp).
