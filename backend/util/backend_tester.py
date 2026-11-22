@@ -107,6 +107,6 @@ def test_render_3d_gaussian_splat():
 
 if __name__ == "__main__":
     # print(json.dumps(call_find_pothole_location(), indent=2))
-    test_database_retrieval()
-    # test_render_3d_gaussian_splat()  # needs ~16 GB+ RAM; this 8 GB M1 runs out of memory
+    # test_database_retrieval()
+    test_render_3d_gaussian_splat()  # needs ~16 GB+ RAM; this 8 GB M1 runs out of memory
     print("Alr we good twin")

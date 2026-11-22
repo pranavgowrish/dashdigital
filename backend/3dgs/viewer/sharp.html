@@ -28,8 +28,9 @@
     // The photo was taken from the origin looking down +z, so the pothole sits at
     // roughly (0, 0, +z) a few meters out.
     //
-    //   python -m http.server 8000      (from the esri/ folder)
-    //   localhost:8000/viewer/sharp.html?file=out/pothole.ply
+    //   python -m http.server 8080      (from backend/3dgs/; the backend owns 8000)
+    //   localhost:8080/viewer/sharp.html?file=out/pothole.ply
+    //   merged: ?file=out/<lat>_<lon>.ply&cam=0,-2.5,0&look=0,-2,3
     import * as THREE from "three";
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
     import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
@@ -49,7 +50,9 @@
     scene.add(new SparkRenderer({ renderer }));
     const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 200);
     camera.up.set(0, -1, 0);           // y is down in SHARP's frame
-    camera.position.set(0, 0, 0);      // start at the photo's viewpoint
+    // ?cam=x,y,z: start position. Merged splats put the Street View camera at 0,-2.5,0.
+    const cam = (params.get("cam") || "0,0,0").split(",").map(Number);
+    camera.position.set(cam[0], cam[1], cam[2]);
     const controls = new OrbitControls(camera, renderer.domElement);
     const look = (params.get("look") || "0,0.4,3").split(",").map(Number);
     controls.target.set(look[0], look[1], look[2]);
@@ -64,7 +67,7 @@
       document.title = "READY";
     }).catch((err) => {
       hud.innerHTML = `Failed to load <code>${url}</code><br>${err}<br><br>` +
-        "Serve the <code>esri/</code> folder and pass the .ply path, e.g. " +
+        "Serve the <code>backend/3dgs/</code> folder and pass the .ply path, e.g. " +
         "<code>?file=out/pothole.ply</code>";
     });
 
