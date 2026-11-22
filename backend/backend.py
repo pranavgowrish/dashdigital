@@ -19,10 +19,20 @@ sharp = importlib.import_module("3dgs.run_sharp")  # "3dgs" isn't a valid name f
 
 app = FastAPI()
 
-# Synthetic fixture assumption; replace with the camera's calibrated pitch.
-CAMERA_PITCH_DOWN_DEG = 20.0
-CAMERA_HFOV_DEG = 105.0
-CAMERA_VFOV_DEG = 75.0
+# VIOFO A119 Mini 2: 140 deg diagonal lens, modelled as an equidistant fisheye (r = f * theta).
+# A plain pinhole at 140 deg puts everything about 2x too close; this model matched the 8 ft
+# "AHEAD" pavement letters and the GPS distance between frames in real drive footage.
+CAMERA_DIAG_FOV_DEG = 140.0
+# Mount on our test car, measured from the lane-line vanishing point on a straight, flat road:
+# the camera looks 3.8 deg below level and 4.3 deg left of the car's direction of travel.
+CAMERA_PITCH_DOWN_DEG = 3.8
+CAMERA_YAW_LEFT_DEG = 4.3
+CAMERA_HEIGHT_M = 53 * 0.0254  # lens height above the road
+MAX_HAZARD_RANGE_M = 50.0
+# Severity from the pothole's real width across the road (m). Length along the road isn't used:
+# at this shallow camera angle a few pixels of box height spans meters of road.
+SEVERITY_HIGH_WIDTH_M = 0.85
+SEVERITY_MEDIUM_WIDTH_M = 0.70
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,26 +54,71 @@ print(f"Connected to Astra DB: {db.list_collection_names()}")
 
 issues_table = db.get_table("issues")
 
-def ground_plane_spatial_projection(PotHoleData: PotholeLocation):
-    x_min, y_min, x_max, y_max = PotHoleData.detection.bbox_norm
+def pixel_to_ground(x_norm, y_norm, image_width, image_height):
+    # Returns (forward, right) in meters from the camera along the car's axes, or None above the horizon.
+    x = (x_norm - 0.5) * image_width
+    y = (y_norm - 0.5) * image_height
+    f = math.hypot(image_width, image_height) / 2 / math.radians(CAMERA_DIAG_FOV_DEG / 2)
 
-    mount_height_m = 1.27 #Assuming for a Honda Clarity Plugin Hybrid 2021
+    # Ray in camera axes (x right, y down, z forward).
+    r = math.hypot(x, y)
+    theta = r / f
+    ray = (0.0, 0.0, 1.0) if r == 0 else (math.sin(theta) * x / r, math.sin(theta) * y / r, math.cos(theta))
 
-    u_norm = ((x_min + x_max) / 2 - 0.5) * 2.0
-    v_norm = (y_max - 0.5) * 2.0
+    # Car forward, up and right in camera axes, assuming no roll.
+    pitch = math.radians(CAMERA_PITCH_DOWN_DEG)
+    yaw = math.radians(CAMERA_YAW_LEFT_DEG)
+    forward = (math.sin(yaw) * math.cos(pitch), -math.sin(pitch), math.cos(yaw) * math.cos(pitch))
+    up = (-math.sin(yaw) * math.sin(pitch), -math.cos(pitch), -math.cos(yaw) * math.sin(pitch))
+    right = (forward[1] * up[2] - forward[2] * up[1],
+             forward[2] * up[0] - forward[0] * up[2],
+             forward[0] * up[1] - forward[1] * up[0])
 
-    alpha = math.atan(u_norm * math.tan(math.radians(CAMERA_HFOV_DEG / 2.0)))
-    beta = math.atan(v_norm * math.tan(math.radians(CAMERA_VFOV_DEG / 2.0)))
-
-    total_pitch = math.radians(CAMERA_PITCH_DOWN_DEG) + beta
-
-    if total_pitch <= math.radians(2.0):
+    dot = lambda a, b: a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+    down = -dot(ray, up)
+    if down <= math.sin(math.radians(1.0)):
         return None
 
-    d_forward = mount_height_m / math.tan(total_pitch)
-    r_ground = d_forward * math.cos(alpha)
+    scale = CAMERA_HEIGHT_M / down
+    return dot(ray, forward) * scale, dot(ray, right) * scale
 
-    if r_ground > 50.0:
+def estimate_severity(PotHoleData: PotholeLocation):
+    # Bigger pothole on the road = more severe; measured as real width, so distance doesn't matter.
+    x_min, y_min, x_max, y_max = PotHoleData.detection.bbox_norm
+    width, height = PotHoleData.detection.image_width, PotHoleData.detection.image_height
+
+    widths = []
+    for y in (y_max, y_min):
+        left = pixel_to_ground(x_min, y, width, height)
+        right = pixel_to_ground(x_max, y, width, height)
+        if left and right:
+            widths.append(abs(right[1] - left[1]))
+    if not widths:
+        return "medium"
+
+    width_m = sum(widths) / len(widths)
+    if width_m >= SEVERITY_HIGH_WIDTH_M:
+        return "high"
+    if width_m >= SEVERITY_MEDIUM_WIDTH_M:
+        return "medium"
+    return "low"
+
+def ground_plane_spatial_projection(PotHoleData: PotholeLocation):
+    x_min, y_min, x_max, y_max = PotHoleData.detection.bbox_norm
+    width, height = PotHoleData.detection.image_width, PotHoleData.detection.image_height
+
+    # Pothole centre on the road: midpoint of the box's near (bottom) and far (top) edges.
+    near = pixel_to_ground((x_min + x_max) / 2, y_max, width, height)
+    if near is None:
+        return None
+    far = pixel_to_ground((x_min + x_max) / 2, y_min, width, height) or near
+    d_forward = (near[0] + far[0]) / 2
+    d_right = (near[1] + far[1]) / 2
+
+    alpha = math.atan2(d_right, d_forward)
+    r_ground = math.hypot(d_forward, d_right)
+
+    if r_ground > MAX_HAZARD_RANGE_M:
         return None
 
     utm_zone = int((PotHoleData.gps.lon + 180) / 6) + 1
@@ -82,7 +137,7 @@ def ground_plane_spatial_projection(PotHoleData: PotholeLocation):
 
     hazard_lon, hazard_lat = to_wgs84.transform(hazard_easting, hazard_northing)
 
-    return round(hazard_lat, 7), round(hazard_lon, 6)
+    return round(hazard_lat, 7), round(hazard_lon, 7)
 
 @app.post("/findPotholeLocation")
 def find_pothole_location(PotHoleData: PotholeLocation):
@@ -96,6 +151,8 @@ def find_pothole_location(PotHoleData: PotholeLocation):
     # image.save(image_path, format="JPEG")
     
     hazard_location = ground_plane_spatial_projection(PotHoleData)
+    if hazard_location is None:
+        return {"message": "Detection is above the horizon or too far away to place on the road; not stored."}
 
     result = issues_table.insert_one(
         {
@@ -107,8 +164,8 @@ def find_pothole_location(PotHoleData: PotholeLocation):
             "car_lon": PotHoleData.gps.lon,
             "heading_deg": PotHoleData.gps.heading_degree,
             "image_base64": PotHoleData.crop_jpeg_base64,
-            "status": "open", #Fix ts with actual severity classification logic
-            "severity": "medium",
+            "status": "open",
+            "severity": estimate_severity(PotHoleData),
             "hazard_type": "pothole"
         }
     )
