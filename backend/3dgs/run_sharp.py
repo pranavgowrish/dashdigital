@@ -3,6 +3,7 @@ import math
 import os
 import subprocess
 import tempfile
+import uuid
 from pathlib import Path
 import requests
 from PIL import Image
@@ -19,6 +20,21 @@ DASHCAM_FOV_DEG = 105.0
 SHARP_DEVICE = "mps"
 SHARP_BIN = Path(__file__).parent.parent / ".venv" / "bin" / "sharp"  # ml-sharp submodule installed into backend/.venv
 OUTPUT_DIR = Path(__file__).parent / "out"
+
+# SHARP_RUNNER in .env picks where SHARP runs: "local" (this Mac, MPS) or "cluster" (CUDA over ssh).
+# The cluster side is set up once with 3dgs/setup_cluster.sh.
+SHARP_REMOTE_HOST = "pgowr001@crisgc.engr.ucr.edu"
+SHARP_REMOTE_HOME = "~/dashdigital-sharp"           # venv + ml-sharp live here; jobs/ holds per-request dirs
+# crisgc is a login node: SLURM puts the job on a GPU in the cisl partition (dune1/dune2, RTX 6000 Ada).
+SHARP_REMOTE_LAUNCHER = "srun --unbuffered -p cisl --gres=gpu:1 -c 8 --mem=32G -t 30"
+# Reuse one ssh connection for every call (the cluster bans hosts that open too many), and fail
+# instead of hanging on a password prompt the backend can't answer.
+SSH_OPTS = [
+    "-o", "BatchMode=yes",
+    "-o", "ControlMaster=auto",
+    "-o", "ControlPath=~/.ssh/cm-%r@%h:%p",
+    "-o", "ControlPersist=4h",
+]
 
 DIAG_35MM = math.hypot(36.0, 24.0)  # 43.267 mm, the 35mm-film diagonal SHARP normalizes to
 CROP_GUESS = 8.4                    # ml-sharp's crude multiplier for a sub-10mm FocalLength
@@ -107,6 +123,12 @@ def fetch_street_view(car_lat, car_lon, image_dir):
     return metadata["location"]["lat"], metadata["location"]["lng"]
 
 def run_sharp(input_dir, output_dir):
+    runner = os.getenv("SHARP_RUNNER", "local").lower()
+    if runner == "cluster":
+        return run_sharp_cluster(input_dir, output_dir)
+    if runner != "local":
+        raise ValueError(f"SHARP_RUNNER must be 'local' or 'cluster', not {runner!r}")
+
     # One batch call so the model loads once. The checkpoint auto-downloads and caches unless SHARP_CHECKPOINT is set.
     cmd = [os.getenv("SHARP_BIN", str(SHARP_BIN)), "predict", "-i", str(input_dir), "-o", str(output_dir), "--device", SHARP_DEVICE]
 
@@ -114,6 +136,39 @@ def run_sharp(input_dir, output_dir):
         cmd += ["-c", os.getenv("SHARP_CHECKPOINT")]
 
     subprocess.run(cmd, check=True)
+
+def ssh(host, command, **kwargs):
+    return subprocess.run(["ssh", *SSH_OPTS, host, command], check=True, **kwargs)
+
+def run_sharp_cluster(input_dir, output_dir):
+    # Same `sharp predict`, on the cluster's GPU. Images go up and .ply files come back as tar
+    # streams over the shared ssh connection; SHARP's log streams straight to this terminal.
+    host = os.getenv("SHARP_REMOTE_HOST", SHARP_REMOTE_HOST)
+    home = os.getenv("SHARP_REMOTE_HOME", SHARP_REMOTE_HOME)
+    launcher = os.getenv("SHARP_REMOTE_LAUNCHER", SHARP_REMOTE_LAUNCHER)
+    job = f"{home}/jobs/{uuid.uuid4().hex}"
+
+    print(f"[sharp] running on {host} ({job})", flush=True)
+    ssh(host, f"mkdir -p {job}/input {job}/output")
+    try:
+        with subprocess.Popen(["tar", "-C", str(input_dir), "-cf", "-", "."], stdout=subprocess.PIPE) as upload:
+            ssh(host, f"tar -C {job}/input -xf -", stdin=upload.stdout)
+        if upload.returncode:
+            raise RuntimeError("Packing the SHARP inputs failed")
+
+        cmd = f"{launcher} {home}/.venv/bin/sharp predict -i {job}/input -o {job}/output --device cuda"
+        if os.getenv("SHARP_REMOTE_CHECKPOINT"):
+            cmd += f" -c {os.getenv('SHARP_REMOTE_CHECKPOINT')}"
+        ssh(host, cmd)
+
+        with subprocess.Popen(["tar", "-C", str(output_dir), "-xf", "-"], stdin=subprocess.PIPE) as download:
+            ssh(host, f"tar -C {job}/output -cf - .", stdout=download.stdin)
+            download.stdin.close()
+        if download.returncode:
+            raise RuntimeError("Unpacking the SHARP outputs failed")
+    finally:
+        ssh(host, f"rm -rf {job}")
+    print(f"[sharp] done on {host}", flush=True)
 
 def render_gaussian_splat(car_lat, car_lon, heading_deg, image_base64, dashcam_fov_deg=None):
     with tempfile.TemporaryDirectory(prefix="dashdigital-3dgs-") as temp_dir:
