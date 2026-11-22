@@ -9,6 +9,15 @@ export default defineConfig({
     babel({ presets: [reactCompilerPreset()] }),
     tailwindcss(),
   ],
+  build: {
+    rollupOptions: {
+      // index.html is the dashboard; scene.html is the 3D hazard viewer it opens.
+      input: {
+        main: 'index.html',
+        scene: 'scene.html',
+      },
+    },
+  },
   server: {
     port: 3000,
     strictPort: true,

@@ -7,6 +7,7 @@ import { HazardMap } from "./components/HazardMap";
 import { Sidebar } from "./components/Sidebar";
 import { STATES, USA_TARGET, hazardInLocation, type MapTarget } from "./data/areas";
 import { fetchCities, fetchCityBoundary, fetchStateBoundary, type CityOption } from "./data/cities";
+import { openHazardIn3D } from "./data/hazard3d";
 import { hazardList, normalizeHazards, type Hazard } from "./data/hazards";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -165,17 +166,11 @@ function App() {
     setHazards((list) => list.filter((h) => h.id !== hazard.id));
   };
 
-  const viewHazardIn3D = async (hazard: Hazard) => {
-    const res = await fetch(`${API_URL}/render3DGaussianSplat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: hazard.id, hazard_lat: hazard.lat, hazard_lon: hazard.lon }),
-    });
-    if (!res.ok) throw new Error(`3D render failed (HTTP ${res.status})`);
-    const plyUrl = URL.createObjectURL(await res.blob());
-    const tab = window.open(`/sharp.html?file=${encodeURIComponent(plyUrl)}&cam=0,-2.5,0&look=0,-2,3`, "_blank");
-    if (!tab) throw new Error("Pop-up blocked. Allow pop-ups for this site and try again.");
-  };
+  // Opens the hazard photo draped on an ArcGIS 3D scene (scene.html). This replaces
+  // the Gaussian-splat path (/render3DGaussianSplat + sharp.html), which is still in
+  // the repo but no longer called.
+  const viewHazardIn3D = (hazard: Hazard) =>
+    openHazardIn3D(hazard, `HZ-${String(hazard.objectId).padStart(4, "0")}`);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-100 text-slate-900">

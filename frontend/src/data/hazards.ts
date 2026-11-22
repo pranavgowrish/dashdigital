@@ -11,6 +11,11 @@ export interface Hazard {
   lon: number;
   detected_at: string;
   image_url: string;
+  /** Compass bearing the dashcam was facing, degrees clockwise from north. */
+  heading_deg: number | null;
+  /** Where the car was when the photo was taken. */
+  car_lat: number | null;
+  car_lon: number | null;
 }
 
 export interface ApiHazard {
@@ -22,6 +27,9 @@ export interface ApiHazard {
   lon?: number;
   hazard_lat?: number;
   hazard_lon?: number;
+  heading_deg?: number;
+  car_lat?: number;
+  car_lon?: number;
   detected_at: string | number | { timestamp_ms: number };
   image_url?: string;
   image_base64?: string;
@@ -58,6 +66,11 @@ function toStatus(value: unknown): HazardStatus {
   return STATUSES.includes(v) ? v : "open";
 }
 
+function toNumberOrNull(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function hazardList(payload: unknown): ApiHazard[] {
   if (Array.isArray(payload)) return payload;
   const wrapped = (payload as { pothole_data?: unknown } | null)?.pothole_data;
@@ -75,5 +88,8 @@ export function normalizeHazards(items: ApiHazard[]): Hazard[] {
     lon: Number(item.lon ?? item.hazard_lon),
     detected_at: toIsoTime(item.detected_at),
     image_url: toImageSrc(item),
+    heading_deg: toNumberOrNull(item.heading_deg),
+    car_lat: toNumberOrNull(item.car_lat),
+    car_lon: toNumberOrNull(item.car_lon),
   }));
 }
