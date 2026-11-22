@@ -49,6 +49,26 @@ The 2.8 GB checkpoint downloads to `~/.cache/torch/hub/checkpoints/` on the firs
 Memory: ml-sharp holds about 8 GB at peak while loading the model, so on an 8 GB Mac it gets
 killed by macOS. Use a 16 GB+ machine.
 
+## Run on the GPU cluster
+
+`SHARP_RUNNER` in `backend/.env` picks where SHARP runs: `local` (this Mac, MPS, the default) or
+`cluster` (`pgowr001@crisgc.engr.ucr.edu`, CUDA). On the cluster, the backend streams the 5 images
+over ssh, runs the same `sharp predict` through `srun` on a GPU in the `cisl` partition (dune1/dune2), prints SHARP's log in the backend's terminal, and pulls the
+.ply files back. Merging still happens on the Mac.
+
+One-time setup, from `backend/` while on the campus network or VPN:
+
+```bash
+ssh crisgc.engr.ucr.edu exit             # check you can log in (key, or password once)
+bash 3dgs/setup_cluster.sh               # copies ml-sharp, builds ~/dashdigital-sharp/.venv, checks CUDA
+```
+
+The backend never prompts for a password. It reuses the connection from `~/.ssh/cm-*`, which stays
+open 4h after the last use, or works on its own with an ssh key. The 2.8 GB checkpoint downloads
+on the cluster's first run. Optional `.env` overrides: `SHARP_REMOTE_HOST`, `SHARP_REMOTE_HOME`,
+`SHARP_REMOTE_CHECKPOINT`, and `SHARP_REMOTE_LAUNCHER` (default
+`srun --unbuffered -p cisl --gres=gpu:1 -c 8 --mem=32G -t 30`; add `-w dune1` to pin a node).
+
 ## Test
 
 Start the backend from `backend/` (`uvicorn backend:app`), then run `python util/backend_tester.py`.

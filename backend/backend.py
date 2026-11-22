@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import uuid
 import os
 import importlib
+import json
 
 sharp = importlib.import_module("3dgs.run_sharp")  # "3dgs" isn't a valid name for a plain import
 
@@ -186,6 +187,20 @@ def delete_pothole_data_from_database(pothole_id):
 
     issues_table.delete_one({"id" : pothole_id})
     return {"deleted": str(pothole_id)}
+
+# Splats rendered ahead of time, one per site; manifest.json maps each pothole id to its file.
+PRE_RENDERED_DIR = Path(__file__).parent / "3dgs" / "out" / "sites"
+
+@app.api_route("/preRenderedSplat/{pothole_id}", methods=["GET", "HEAD"])
+def pre_rendered_splat(pothole_id: str):
+    # Fallback for the frontend when a live render takes too long.
+    manifest = PRE_RENDERED_DIR / "manifest.json"
+    entries = json.loads(manifest.read_text()) if manifest.exists() else []
+    for entry in entries:
+        ply_path = PRE_RENDERED_DIR / entry["file"]
+        if entry["id"] == pothole_id and ply_path.exists():
+            return FileResponse(ply_path, media_type="application/octet-stream", filename="pothole.ply")
+    raise HTTPException(status_code=404, detail="No pre-rendered splat for this pothole")
 
 @app.post("/render3DGaussianSplat")
 def render_3d_gaussian_splat(SplatData: GaussianSplatRequest):

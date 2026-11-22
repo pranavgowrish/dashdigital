@@ -5,8 +5,10 @@ import subprocess
 import tempfile
 import uuid
 from pathlib import Path
+import numpy as np
 import requests
 from PIL import Image
+from scipy.ndimage import map_coordinates
 from .merge_splats import merge_splats, GSV_PITCH_DOWN_DEG
 
 GSV_HEADINGS = [0, 90, 180, 270]  # heading=0 is True North, so the panorama's own heading is 0.0
@@ -14,8 +16,15 @@ GSV_SIZE = "640x640"
 GSV_FOV_DEG = 95
 GSV_PITCH_DEG = -GSV_PITCH_DOWN_DEG
 
-# Used only when the pothole photo has no EXIF focal length and no FOV is passed in.
-DASHCAM_FOV_DEG = 105.0
+# VIOFO A119 Mini 2, keep in sync with backend.py: 140 deg diagonal equidistant fisheye (r = f * theta),
+# mounted 3.8 deg down and 4.3 deg left of the car's direction of travel.
+DASHCAM_DIAG_FOV_DEG = 140.0
+DASHCAM_PITCH_DOWN_DEG = 3.8
+DASHCAM_YAW_LEFT_DEG = 4.3
+# The level view handed to SHARP stops this far below the horizon, just above the hood
+# (the hood's top edge sits about 19 deg down), so the hood and the HUD text are cropped out.
+DASHCAM_VIEW_BELOW_DEG = 17.0
+DASHCAM_VIEW_ABOVE_DEG = 17.0
 
 SHARP_DEVICE = "mps"
 SHARP_BIN = Path(__file__).parent.parent / ".venv" / "bin" / "sharp"  # ml-sharp submodule installed into backend/.venv
@@ -50,23 +59,39 @@ def f_35mm_from_fov(image_path, fov_deg):
 
     return f_px * DIAG_35MM / math.hypot(width, height)
 
-def exif_focal_35mm(image_path):
-    # Mirrors ml-sharp's sharp/utils/io.py:load_rgb EXIF logic, minus its 30mm fallback.
-    with Image.open(image_path) as im:
-        exif = im.getexif()
-        tags = dict(exif)
-        tags.update(exif.get_ifd(EXIF_IFD))
+def level_dashcam_view(src, dst):
+    # SHARP assumes an undistorted photo with the principal point in the middle. Resample the
+    # fisheye frame into a pinhole view that is level and faces the car's direction of travel,
+    # so the merge only has to turn it to the car's heading. Returns the view's horizontal FOV.
+    with Image.open(src) as im:
+        frame = np.asarray(im.convert("RGB"), dtype=np.float32)
+    height, width = frame.shape[:2]
+    # Frames are 16:9; a screenshot may be trimmed at the bottom, so the centre comes from the width.
+    cx, cy = width / 2, width * 9 / 32
+    f = math.hypot(cx, cy) / math.radians(DASHCAM_DIAG_FOV_DEG / 2)
 
-    f_35mm = tags.get(TAG_FOCAL_35MM)
-    if f_35mm is not None and float(f_35mm) >= 1:
-        return float(f_35mm)
+    # Output pinhole camera: same focal length, so the centre keeps its resolution.
+    out_h = round(f * math.tan(math.radians(DASHCAM_VIEW_ABOVE_DEG))), round(f * math.tan(math.radians(DASHCAM_VIEW_BELOW_DEG)))
+    ys, xs = np.mgrid[-out_h[0]:out_h[1], 0:width].astype(np.float32)
+    rays = np.stack([(xs - cx) / f, ys / f, np.ones_like(xs)], axis=-1)
 
-    f = tags.get(TAG_FOCAL_LENGTH)
-    if not f:
-        return None
+    # Level, car-forward axes expressed in the real camera's axes (x right, y down, z forward).
+    pitch, yaw = math.radians(DASHCAM_PITCH_DOWN_DEG), math.radians(DASHCAM_YAW_LEFT_DEG)
+    forward = np.array([math.sin(yaw) * math.cos(pitch), -math.sin(pitch), math.cos(yaw) * math.cos(pitch)])
+    down = np.array([math.sin(yaw) * math.sin(pitch), math.cos(pitch), math.cos(yaw) * math.sin(pitch)])
+    right = np.cross(down, forward)
+    cam = rays @ np.stack([right, down, forward])
+    cam /= np.linalg.norm(cam, axis=-1, keepdims=True)
 
-    f = float(f)
-    return f * CROP_GUESS if f < 10.0 else f
+    # Fisheye projection back into the source frame.
+    theta = np.arccos(np.clip(cam[..., 2], -1, 1))
+    r_xy = np.maximum(np.hypot(cam[..., 0], cam[..., 1]), 1e-9)
+    u = cx + f * theta * cam[..., 0] / r_xy
+    v = cy + f * theta * cam[..., 1] / r_xy
+    out = np.stack([map_coordinates(frame[..., c], [v, u], order=1, mode="nearest") for c in range(3)], axis=-1)
+
+    Image.fromarray(out.clip(0, 255).astype(np.uint8)).save(dst, quality=97)
+    return math.degrees(2 * math.atan(width / 2 / f))
 
 def stage_with_focal(src, f_35mm, stage_dir):
     # Copy the photo with its EXIF focal length rewritten, so SHARP reads our value.
@@ -170,7 +195,8 @@ def run_sharp_cluster(input_dir, output_dir):
         ssh(host, f"rm -rf {job}")
     print(f"[sharp] done on {host}", flush=True)
 
-def render_gaussian_splat(car_lat, car_lon, heading_deg, image_base64, dashcam_fov_deg=None):
+def render_gaussian_splat(car_lat, car_lon, heading_deg, image_base64):
+    # image_base64 must be the full dashcam frame (not a crop): its geometry is what places the splat.
     with tempfile.TemporaryDirectory(prefix="dashdigital-3dgs-") as temp_dir:
         image_dir = Path(temp_dir) / "images"
         input_dir = Path(temp_dir) / "input"
@@ -181,18 +207,17 @@ def render_gaussian_splat(car_lat, car_lon, heading_deg, image_base64, dashcam_f
 
         pano_lat, pano_lon = fetch_street_view(car_lat, car_lon, image_dir)
 
+        frame_path = image_dir / "frame.jpg"
+        frame_path.write_bytes(base64.b64decode(image_base64))
         pothole_path = image_dir / "pothole.jpg"
-        pothole_path.write_bytes(base64.b64decode(image_base64))
+        dashcam_hfov_deg = level_dashcam_view(frame_path, pothole_path)
 
         # Street View images carry no EXIF, so SHARP would assume 30mm (~65 deg) and warp the 95 deg views.
         for heading in GSV_HEADINGS:
             gsv_path = image_dir / f"gsv_{heading}.jpg"
             stage_with_focal(gsv_path, f_35mm_from_fov(gsv_path, GSV_FOV_DEG), input_dir)
 
-        pothole_f_35mm = exif_focal_35mm(pothole_path)
-        if dashcam_fov_deg is not None or pothole_f_35mm is None:
-            pothole_f_35mm = f_35mm_from_fov(pothole_path, dashcam_fov_deg or DASHCAM_FOV_DEG)
-        stage_with_focal(pothole_path, pothole_f_35mm, input_dir)
+        stage_with_focal(pothole_path, f_35mm_from_fov(pothole_path, dashcam_hfov_deg), input_dir)
 
         run_sharp(input_dir, output_dir)
 

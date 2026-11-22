@@ -7,10 +7,14 @@ from pyproj import CRS, Transformer
 MAX_GSV_DEPTH_M = 18.0
 GSV_KEEP_FRACTION = 0.5
 
+# The dashcam splat is current and sharper than Street View, so it replaces Street View wherever
+# it sees the road, out to this range from the car (farther out it's mostly noise).
+MAX_DASHCAM_RANGE_M = 30.0
+FOOTPRINT_CELL_M = 0.5
+
 GSV_PITCH_DOWN_DEG = 5.0      # run_sharp requests Street View at pitch=-5
 GSV_CAMERA_HEIGHT_M = 2.5      # Google Street View car camera
-DASHCAM_PITCH_DOWN_DEG = 20.0  # keep in sync with CAMERA_PITCH_DOWN_DEG in backend.py
-DASHCAM_HEIGHT_M = 1.27        # keep in sync with mount_height_m in backend.py
+DASHCAM_HEIGHT_M = 53 * 0.0254  # keep in sync with CAMERA_HEIGHT_M in backend.py
 
 def load_vertices(ply_path):
     # Only the vertex element is kept; SHARP's extra metadata elements confuse 3DGS viewers.
@@ -54,6 +58,23 @@ def level_and_rotate(vertices, pitch_down_deg, heading_deg):
 
     return vertices
 
+def opaque(vertices):
+    return 1 / (1 + np.exp(-vertices["opacity"])) > 0.5
+
+def ground_offset(vertices, center_x, center_z, min_range_m, max_range_m):
+    # The road is the densest height in a ring around the camera. Each splat's assumed camera
+    # height is only roughly right (SHARP's depth scale varies), so measure where its road landed.
+    distance = np.hypot(vertices["x"] - center_x, vertices["z"] - center_z)
+    ring = opaque(vertices) & (distance >= min_range_m) & (distance <= max_range_m) & (np.abs(vertices["y"]) < 2)
+    if ring.sum() < 500:
+        return 0.0
+    counts, edges = np.histogram(vertices["y"][ring], bins=200, range=(-2, 2))
+    peak = counts.argmax()
+    return float((edges[peak] + edges[peak + 1]) / 2)
+
+def footprint_keys(x, z):
+    return np.floor(x / FOOTPRINT_CELL_M).astype(np.int64) * 1_000_003 + np.floor(z / FOOTPRINT_CELL_M).astype(np.int64)
+
 def local_offset_m(origin_lat, origin_lon, lat, lon):
     utm_zone = int((origin_lon + 180) / 6) + 1
     epsg_code = (32600 if origin_lat >= 0 else 32700) + utm_zone
@@ -76,13 +97,26 @@ def merge_splats(gsv_plys, pothole_ply, pano_lat, pano_lon, car_lat, car_lon, he
         vertices = vertices[rng.random(len(vertices)) < GSV_KEEP_FRACTION]
         vertices = level_and_rotate(vertices, GSV_PITCH_DOWN_DEG, view_heading)
         vertices["y"] -= GSV_CAMERA_HEIGHT_M
+        vertices["y"] -= ground_offset(vertices, 0.0, 0.0, 2.0, 12.0)
         splats.append(vertices)
 
-    pothole = level_and_rotate(load_vertices(pothole_ply), DASHCAM_PITCH_DOWN_DEG, heading_deg)
+    # run_sharp already resampled the dashcam view to level and car-forward, so only the heading is left.
+    pothole = level_and_rotate(load_vertices(pothole_ply), 0.0, heading_deg)
     d_east, d_north = local_offset_m(pano_lat, pano_lon, car_lat, car_lon)
     pothole["x"] += d_east
     pothole["y"] -= DASHCAM_HEIGHT_M
     pothole["z"] += d_north
+    pothole = pothole[np.hypot(pothole["x"] - d_east, pothole["z"] - d_north) <= MAX_DASHCAM_RANGE_M]
+    pothole["y"] -= ground_offset(pothole, d_east, d_north, 3.0, 15.0)
+
+    # Cut Street View out wherever the dashcam sees road, plus one cell of margin, so the two
+    # road surfaces don't overlap and hide the pothole.
+    road = opaque(pothole) & (np.abs(pothole["y"]) < 0.3)
+    cells = np.unique(np.concatenate([
+        footprint_keys(pothole["x"][road] + dx, pothole["z"][road] + dz)
+        for dx in (-FOOTPRINT_CELL_M, 0, FOOTPRINT_CELL_M) for dz in (-FOOTPRINT_CELL_M, 0, FOOTPRINT_CELL_M)
+    ]))
+    splats = [v[~np.isin(footprint_keys(v["x"], v["z"]), cells)] for v in splats]
     splats.append(pothole)
 
     PlyData([PlyElement.describe(np.concatenate(splats), "vertex")]).write(str(output_path))

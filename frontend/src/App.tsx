@@ -10,6 +10,8 @@ import { fetchCities, fetchCityBoundary, fetchStateBoundary, type CityOption } f
 import { hazardList, normalizeHazards, type Hazard } from "./data/hazards";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+// How long "View in 3D" waits on a live cluster render before showing the pre-rendered splat.
+const LIVE_RENDER_TIMEOUT_MS = 60_000;
 
 function goToTarget(target: MapTarget) {
   if ("bbox" in target) {
@@ -166,15 +168,51 @@ function App() {
   };
 
   const viewHazardIn3D = async (hazard: Hazard) => {
-    const res = await fetch(`${API_URL}/render3DGaussianSplat`, {
+    // Open the tab now, while we still have the click: browsers block pop-ups opened after a wait.
+    const tab = window.open("/sharp.html?pending=1", "_blank");
+    if (!tab) throw new Error("Pop-up blocked. Allow pop-ups for this site and try again.");
+
+    // Start above the Street View camera, looking down the road the car was driving.
+    const heading = ((hazard.heading_deg ?? 0) * Math.PI) / 180;
+    const view = `&cam=0,-2.5,0&look=${(6 * Math.sin(heading)).toFixed(2)},0,${(6 * Math.cos(heading)).toFixed(2)}`;
+    const show = (plyUrl: string) => {
+      tab.location.href = `/sharp.html?file=${encodeURIComponent(plyUrl)}${view}`;
+    };
+
+    // Live render on the GPU cluster; if it isn't back in time, show the pre-rendered splat instead.
+    const live = new AbortController();
+    const render = fetch(`${API_URL}/render3DGaussianSplat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: hazard.id, hazard_lat: hazard.lat, hazard_lon: hazard.lon }),
+      signal: live.signal,
+    }).then(async (res) => {
+      if (!res.ok) throw new Error(`3D render failed (HTTP ${res.status})`);
+      return URL.createObjectURL(await res.blob());
     });
-    if (!res.ok) throw new Error(`3D render failed (HTTP ${res.status})`);
-    const plyUrl = URL.createObjectURL(await res.blob());
-    const tab = window.open(`/sharp.html?file=${encodeURIComponent(plyUrl)}&cam=0,-2.5,0&look=0,-2,3`, "_blank");
-    if (!tab) throw new Error("Pop-up blocked. Allow pop-ups for this site and try again.");
+    render.catch(() => {}); // it may be abandoned below
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), LIVE_RENDER_TIMEOUT_MS);
+    });
+    try {
+      const plyUrl = await Promise.race([render, timedOut]).catch(() => null);
+      if (plyUrl) return show(plyUrl);
+
+      const fallback = `${API_URL}/preRenderedSplat/${encodeURIComponent(hazard.id)}`;
+      const hasFallback = await fetch(fallback, { method: "HEAD" }).then((res) => res.ok, () => false);
+      if (hasFallback) {
+        live.abort();
+        return show(fallback);
+      }
+      show(await render); // no pre-rendered splat: keep waiting on the live one
+    } catch (err) {
+      tab.close();
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
   };
 
   return (

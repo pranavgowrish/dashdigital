@@ -28,7 +28,8 @@
     // The photo was taken from the origin looking down +z, so the pothole sits at
     // roughly (0, 0, +z) a few meters out.
     //
-    //   Opened by the frontend's "View in 3D" button with ?file=<blob: URL of the merged .ply>.
+    //   Opened by the frontend's "View in 3D" button: first as ?pending=1, then navigated to
+    //   ?file=<blob: URL of a live render, or the backend's /preRenderedSplat/<id>>&cam=...&look=...
     //   merged: ?file=<url>&cam=0,-2.5,0&look=0,-2,3
     import * as THREE from "three";
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -39,6 +40,14 @@
     // ?file= is a full URL (http:, https: or blob:) or a path from the server root.
     const url = /^(https?:|blob:)/.test(file) ? file : `/${file.replace(/^\//, "")}`;
     const hud = document.getElementById("hud");
+
+    if (params.has("pending")) {
+      // Opened before the splat exists; the "View in 3D" button navigates this tab once one is ready.
+      hud.textContent = "Rendering the 3D scene on the GPU cluster… If it takes over a minute, " +
+        "the saved scene for this pothole opens instead.";
+      await new Promise(() => {});
+    }
+    const preRendered = file.includes("/preRenderedSplat/");
 
     const renderer = new THREE.WebGLRenderer({ antialias: false });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -57,11 +66,11 @@
     controls.target.set(look[0], look[1], look[2]);
     controls.enableDamping = true;
 
-    hud.textContent = `Loading ${file}…`;
+    hud.textContent = preRendered ? "Loading the saved scene…" : `Loading ${file}…`;
     const splat = new SplatMesh({ url });
     scene.add(splat);
     splat.initialized.then(() => {
-      hud.innerHTML = "SHARP: one photo &rarr; 3D Gaussians &middot; " +
+      hud.innerHTML = (preRendered ? "Saved scene (the live render took over a minute) &middot; " : "Live render &middot; ") +
         "drag to orbit &middot; right-drag to pan &middot; scroll to zoom";
       document.title = "READY";
     }).catch((err) => {

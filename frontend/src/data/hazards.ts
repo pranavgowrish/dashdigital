@@ -9,6 +9,7 @@ export interface Hazard {
   status: HazardStatus;
   lat: number;
   lon: number;
+  heading_deg: number | null;
   detected_at: string;
   image_url: string;
 }
@@ -22,6 +23,7 @@ export interface ApiHazard {
   lon?: number;
   hazard_lat?: number;
   hazard_lon?: number;
+  heading_deg?: number;
   detected_at: string | number | { timestamp_ms: number };
   image_url?: string;
   image_base64?: string;
@@ -73,6 +75,7 @@ export function normalizeHazards(items: ApiHazard[]): Hazard[] {
     status: toStatus(item.status),
     lat: Number(item.lat ?? item.hazard_lat),
     lon: Number(item.lon ?? item.hazard_lon),
+    heading_deg: Number.isFinite(item.heading_deg) ? Number(item.heading_deg) : null,
     detected_at: toIsoTime(item.detected_at),
     image_url: toImageSrc(item),
   }));
