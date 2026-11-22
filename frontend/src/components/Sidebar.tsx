@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { UsState } from "../data/areas";
 import type { CityOption } from "../data/cities";
 import { CityPicker } from "./CityPicker";
@@ -167,6 +167,7 @@ export function Sidebar({
   const high = hazards.filter((h) => h.status !== "resolved" && h.severity === "high").length;
   const placeName = city?.name ?? state?.name ?? "any location";
   const [width, setWidth] = useState(loadWidth);
+  const [busy, setBusy] = useState(false);
   const resize = (w: number) => {
     setWidth(w);
     saveWidth(w);
@@ -175,13 +176,27 @@ export function Sidebar({
   return (
     <aside
       id="triage-panel"
-      inert={!open}
+      inert={!open || busy}
       aria-hidden={!open}
       style={{ width: open ? width : 0, maxWidth: "calc(100vw - 15rem)" }}
       className={`relative shrink-0 overflow-hidden bg-white ${open ? "border-l border-slate-200" : ""}`}
     >
-     {open && <ResizeHandle width={width} onResize={resize} />}
-     <div className="flex h-full flex-col" style={{ width, maxWidth: "calc(100vw - 15rem)" }}>
+     {open && !busy && <ResizeHandle width={width} onResize={resize} />}
+     {busy && (
+       <div
+         aria-hidden
+         className="absolute inset-0 z-40 flex cursor-wait items-center justify-center bg-slate-200/60"
+       >
+         <div className="flex items-center gap-2 border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-md">
+           <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+           Building 3D view…
+         </div>
+       </div>
+     )}
+     <div
+       className={`flex h-full flex-col ${busy ? "pointer-events-none select-none opacity-50" : ""}`}
+       style={{ width, maxWidth: "calc(100vw - 15rem)" }}
+     >
       <header className="border-b border-slate-200 p-4">
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold">Hazard Triage</h1>
@@ -236,7 +251,14 @@ export function Sidebar({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {selected ? (
-          <HazardDetail key={selected.id} hazard={selected} onBack={onExit} onDelete={onDelete} onView3D={onView3D} />
+          <HazardDetail
+            key={selected.id}
+            hazard={selected}
+            onBack={onExit}
+            onDelete={onDelete}
+            onView3D={onView3D}
+            onBusyChange={setBusy}
+          />
         ) : hazards.length === 0 ? (
           <p className="p-4 text-sm text-slate-500">No hazards reported in {placeName}.</p>
         ) : (
@@ -279,11 +301,13 @@ function HazardDetail({
   onBack,
   onDelete,
   onView3D,
+  onBusyChange,
 }: {
   hazard: Hazard;
   onBack: () => void;
   onDelete: (hazard: Hazard) => Promise<void>;
   onView3D: (hazard: Hazard) => Promise<void>;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -292,9 +316,12 @@ function HazardDetail({
   const [view3DState, setView3DState] = useState<"idle" | "loading" | "done">("idle");
   const [view3DError, setView3DError] = useState<string | null>(null);
 
+  useEffect(() => () => onBusyChange(false), [onBusyChange]);
+
   const view3D = () => {
     setView3DState("loading");
     setView3DError(null);
+    onBusyChange(true);
     onView3D(hazard)
       .then(() => {
         setView3DState("done");
@@ -303,7 +330,8 @@ function HazardDetail({
       .catch((err: Error) => {
         setView3DError(err.message || "3D render failed");
         setView3DState("idle");
-      });
+      })
+      .finally(() => onBusyChange(false));
   };
 
   const confirmDelete = () => {
@@ -327,9 +355,16 @@ function HazardDetail({
 
   return (
     <div>
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2 text-sm">
-        <button type="button" onClick={onBack} className="text-slate-700 hover:text-slate-950 hover:underline">
-          Exit
+      <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-2 text-sm">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Back to hazard list"
+          title="Back to hazard list"
+          className="-ml-1 flex items-center gap-1.5 border border-slate-300 bg-white px-2.5 py-1.5 font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-200"
+        >
+          <span aria-hidden className="text-base leading-none">&larr;</span>
+          Back
         </button>
         <span className="font-mono text-xs text-slate-500">{ticketId(hazard)}</span>
       </div>
