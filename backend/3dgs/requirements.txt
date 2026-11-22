@@ -1,4 +1,0 @@
-# For run_sharp.py only. The reconstruction itself runs in Apple's ml-sharp
-# environment (see README) -- that's where torch/gsplat live.
-pillow>=10.0
-pillow-heif>=0.18  # optional: lets --fov-deg work on iPhone .heic originals

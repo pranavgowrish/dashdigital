@@ -19,3 +19,9 @@ class PotholeLocation(BaseModel):
     gps: gpsModel
     detection: detectionModel
     crop_jpeg_base64: str
+
+class GaussianSplatRequest(BaseModel):
+    lat: float
+    lon: float
+    heading_deg: float
+    image_base64: str
