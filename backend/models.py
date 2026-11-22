@@ -21,7 +21,6 @@ class PotholeLocation(BaseModel):
     crop_jpeg_base64: str
 
 class GaussianSplatRequest(BaseModel):
-    lat: float
-    lon: float
-    heading_deg: float
-    image_base64: str
+    id: str
+    hazard_lat: float
+    hazard_lon: float

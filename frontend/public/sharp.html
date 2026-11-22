@@ -28,17 +28,16 @@
     // The photo was taken from the origin looking down +z, so the pothole sits at
     // roughly (0, 0, +z) a few meters out.
     //
-    //   python -m http.server 8080      (from backend/3dgs/; the backend owns 8000)
-    //   localhost:8080/viewer/sharp.html?file=out/pothole.ply
-    //   merged: ?file=out/<lat>_<lon>.ply&cam=0,-2.5,0&look=0,-2,3
+    //   Opened by the frontend's "View in 3D" button with ?file=<blob: URL of the merged .ply>.
+    //   merged: ?file=<url>&cam=0,-2.5,0&look=0,-2,3
     import * as THREE from "three";
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
     import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 
     const params = new URLSearchParams(location.search);
     const file = params.get("file") || "out/pothole.ply";
-    // ?file= is relative to the server root; this page lives one level down in viewer/.
-    const url = /^(https?:|\/)/.test(file) ? file : `../${file}`;
+    // ?file= is a full URL (http:, https: or blob:) or a path from the server root.
+    const url = /^(https?:|blob:)/.test(file) ? file : `/${file.replace(/^\//, "")}`;
     const hud = document.getElementById("hud");
 
     const renderer = new THREE.WebGLRenderer({ antialias: false });
@@ -67,8 +66,8 @@
       document.title = "READY";
     }).catch((err) => {
       hud.innerHTML = `Failed to load <code>${url}</code><br>${err}<br><br>` +
-        "Serve the <code>backend/3dgs/</code> folder and pass the .ply path, e.g. " +
-        "<code>?file=out/pothole.ply</code>";
+        "Open this page from the \"View in 3D\" button, or pass a .ply URL, e.g. " +
+        "<code>?file=http://localhost:8000/pothole.ply</code>";
     });
 
     addEventListener("resize", () => {

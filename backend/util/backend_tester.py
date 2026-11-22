@@ -51,13 +51,6 @@ FAKE_POTHOLE_DATA = {
 }
 
 
-FAKE_SPLAT_DATA = {
-    "lat": FAKE_POTHOLE_DATA["gps"]["lat"],
-    "lon": FAKE_POTHOLE_DATA["gps"]["lon"],
-    "heading_deg": FAKE_POTHOLE_DATA["gps"]["heading_degree"],
-    "image_base64": FAKE_POTHOLE_DATA["crop_jpeg_base64"],
-}
-
 PLY_OUTPUT_PATH = Path(__file__).with_name("render3DGaussianSplat.ply")
 
 
@@ -84,7 +77,13 @@ def test_database_retrieval():
 
 
 def test_render_3d_gaussian_splat():
-    body = json.dumps(FAKE_SPLAT_DATA).encode("utf-8")
+    # Renders the first pothole in the database, the same request the frontend's "View in 3D" sends.
+    with request.urlopen(DATABASE_URL) as response:
+        pothole = json.loads(response.read().decode("utf-8"))["pothole_data"][0]
+
+    body = json.dumps(
+        {"id": pothole["id"], "hazard_lat": pothole["hazard_lat"], "hazard_lon": pothole["hazard_lon"]}
+    ).encode("utf-8")
     http_request = request.Request(
         RENDER_URL,
         data=body,
@@ -106,7 +105,7 @@ def test_render_3d_gaussian_splat():
 
 
 if __name__ == "__main__":
-    # print(json.dumps(call_find_pothole_location(), indent=2))
+    # print(json.dumps(call_find_pothole_location(), indent=2))  # run once first so the database has a pothole
     # test_database_retrieval()
     test_render_3d_gaussian_splat()  # needs ~16 GB+ RAM; this 8 GB M1 runs out of memory
     print("Alr we good twin")
