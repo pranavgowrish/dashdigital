@@ -140,6 +140,7 @@ interface SidebarProps {
   onSelect: (objectId: number | null) => void;
   onExit: () => void;
   onDelete: (hazard: Hazard) => Promise<void>;
+  onView3D: (hazard: Hazard) => Promise<void>;
   open: boolean;
   onClose: () => void;
 }
@@ -160,6 +161,7 @@ export function Sidebar({
   onSelect,
   onExit,
   onDelete,
+  onView3D,
 }: SidebarProps) {
   const active = hazards.filter((h) => h.status !== "resolved").length;
   const high = hazards.filter((h) => h.status !== "resolved" && h.severity === "high").length;
@@ -234,7 +236,7 @@ export function Sidebar({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {selected ? (
-          <HazardDetail key={selected.id} hazard={selected} onBack={onExit} onDelete={onDelete} />
+          <HazardDetail key={selected.id} hazard={selected} onBack={onExit} onDelete={onDelete} onView3D={onView3D} />
         ) : hazards.length === 0 ? (
           <p className="p-4 text-sm text-slate-500">No hazards reported in {placeName}.</p>
         ) : (
@@ -276,15 +278,33 @@ function HazardDetail({
   hazard,
   onBack,
   onDelete,
+  onView3D,
 }: {
   hazard: Hazard;
   onBack: () => void;
   onDelete: (hazard: Hazard) => Promise<void>;
+  onView3D: (hazard: Hazard) => Promise<void>;
 }) {
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [view3DState, setView3DState] = useState<"idle" | "loading" | "done">("idle");
+  const [view3DError, setView3DError] = useState<string | null>(null);
+
+  const view3D = () => {
+    setView3DState("loading");
+    setView3DError(null);
+    onView3D(hazard)
+      .then(() => {
+        setView3DState("done");
+        setTimeout(() => setView3DState("idle"), 10000);
+      })
+      .catch((err: Error) => {
+        setView3DError(err.message || "3D render failed");
+        setView3DState("idle");
+      });
+  };
 
   const confirmDelete = () => {
     setDeleting(true);
@@ -349,6 +369,18 @@ function HazardDetail({
           </button>
         </Row>
       </dl>
+
+      <div className="px-4 pt-4">
+        <button
+          type="button"
+          onClick={view3D}
+          disabled={view3DState !== "idle"}
+          className="border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+        >
+          {view3DState === "loading" ? "Loading…" : view3DState === "done" ? "Done!" : "View in 3D"}
+        </button>
+        {view3DError && <p className="mt-2 text-sm text-red-700">{view3DError}</p>}
+      </div>
 
       <div className="px-4 py-4">
         {!confirming ? (

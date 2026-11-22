@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -103,6 +103,9 @@ def find_pothole_location(PotHoleData: PotholeLocation):
             "detected_at": PotHoleData.capture_time,
             "hazard_lat": hazard_location[0],
             "hazard_lon": hazard_location[1],
+            "car_lat": PotHoleData.gps.lat,
+            "car_lon": PotHoleData.gps.lon,
+            "heading_deg": PotHoleData.gps.heading_degree,
             "image_base64": PotHoleData.crop_jpeg_base64,
             "status": "open", #Fix ts with actual severity classification logic
             "severity": "medium",
@@ -129,6 +132,10 @@ def delete_pothole_data_from_database(pothole_id):
 
 @app.post("/render3DGaussianSplat")
 def render_3d_gaussian_splat(SplatData: GaussianSplatRequest):
-    ply_path = sharp.render_gaussian_splat(SplatData.lat, SplatData.lon, SplatData.heading_deg, SplatData.image_base64)
+    pothole = issues_table.find_one({"id": SplatData.id})
+    if pothole is None:
+        raise HTTPException(status_code=404, detail="Pothole not found")
+
+    ply_path = sharp.render_gaussian_splat(pothole["car_lat"], pothole["car_lon"], pothole["heading_deg"], pothole["image_base64"])
 
     return FileResponse(ply_path, media_type="application/octet-stream", filename="pothole.ply")

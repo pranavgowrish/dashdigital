@@ -165,6 +165,18 @@ function App() {
     setHazards((list) => list.filter((h) => h.id !== hazard.id));
   };
 
+  const viewHazardIn3D = async (hazard: Hazard) => {
+    const res = await fetch(`${API_URL}/render3DGaussianSplat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: hazard.id, hazard_lat: hazard.lat, hazard_lon: hazard.lon }),
+    });
+    if (!res.ok) throw new Error(`3D render failed (HTTP ${res.status})`);
+    const plyUrl = URL.createObjectURL(await res.blob());
+    const tab = window.open(`/sharp.html?file=${encodeURIComponent(plyUrl)}&cam=0,-2.5,0&look=0,-2,3`, "_blank");
+    if (!tab) throw new Error("Pop-up blocked. Allow pop-ups for this site and try again.");
+  };
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-100 text-slate-900">
       <main className="relative min-w-60 flex-1">
@@ -202,6 +214,7 @@ function App() {
         onSelect={selectHazard}
         onExit={exitHazard}
         onDelete={deleteHazard}
+        onView3D={viewHazardIn3D}
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
       />
