@@ -1,98 +1,53 @@
-# esri/: pothole photo → 3D Gaussian Splat (.ply)
+# 3dgs/: pothole + Street View → one 3D Gaussian Splat (.ply)
 
-One photo of a pothole in, one `.ply` 3D Gaussian Splat out. The reconstruction is
-done by [Apple's SHARP](https://github.com/apple/ml-sharp) (`ml-sharp`); this folder
-is the wrapper around it plus a viewer.
+Called from `backend.py`'s `/render3DGaussianSplat` route via
+`run_sharp.render_gaussian_splat(car_lat, car_lon, heading_deg, image_base64)`, where
+`(car_lat, car_lon)` is the car's GPS position and the image is the full dashcam frame.
 
 ```
-run_sharp.py        photo -> sharp predict -> out/<photo>.ply
-viewer/sharp.html   look at the .ply in the browser
+run_sharp.py      fetch 4 Street View views, stamp focal lengths, run `sharp predict` once
+merge_splats.py   align the 5 SHARP .ply files to True North and merge them
+out/              merged .ply files (<car_lat>_<car_lon>.ply), gitignored
 ```
+
+## Pipeline
+
+1. Street View metadata for `(lat, lon)` gives `pano_id` and the panorama's location.
+2. Four 640x640 views at heading 0/90/180/270 (`fov=95`, `pitch=-5`). Heading 0 is True North.
+3. Each image is restamped with an EXIF focal length (95° for Street View; the pothole photo keeps
+   its EXIF focal length, else `DASHCAM_FOV_DEG`), because SHARP otherwise assumes 30 mm.
+4. `sharp predict -i <input dir> -o <output dir>` runs once over all 5 images.
+5. Street View splats drop `z > 18 m` and keep 50% of the rest. Every splat then has its camera's
+   downward pitch leveled (5° Street View, 20° dashcam), is turned to its compass heading, and is
+   lifted to its camera height (2.5 m Street View, 1.27 m dashcam). The pothole splat is also
+   shifted by the car's UTM offset from the panorama. Only the vertex element is written.
+
+Merged frame: OpenCV axes aligned to True North (East = +x, Down = +y, North = +z), in meters,
+with the origin on the ground below the Street View camera.
 
 ## Install
 
-SHARP is a separate project and brings its own torch/gsplat stack, so install it
-first and run everything from its environment:
+SHARP is Apple's [ml-sharp](https://github.com/apple/ml-sharp), checked in as a git submodule at
+`ml-sharp/`. It has its own torch stack, so it gets its own venv at `3dgs/.venv` (gitignored),
+separate from the backend's:
 
 ```bash
-git clone https://github.com/apple/ml-sharp && cd ml-sharp
-conda create -n sharp python=3.13 && conda activate sharp
-pip install -r requirements.txt && pip install -e .
-sharp --help          # check it's on PATH
+git submodule update --init                     # after cloning dashdigital
+cd backend/3dgs
+python3.12 -m venv .venv
+cd ml-sharp && ../.venv/bin/pip install -r requirements.txt && cd ..
+.venv/bin/sharp --help
 ```
 
-Then, back in this folder:
+`run_sharp.py` runs `3dgs/.venv/bin/sharp` by default; set `SHARP_BIN` in `.env` to use another one.
+The 2.8 GB checkpoint downloads to `~/.cache/torch/hub/checkpoints/` on the first run, or set
+`SHARP_CHECKPOINT` to a local `.pt`. The weights are under Apple's own model license
+(`LICENSE_MODEL` in ml-sharp).
 
-```bash
-pip install -r requirements.txt   # just pillow, for run_sharp.py
-```
+Memory: ml-sharp holds about 8 GB at peak while loading the model, so on an 8 GB Mac it gets
+killed by macOS. Use a 16 GB+ machine.
 
-The model checkpoint (`sharp_2572gikvuh.pt`, ~CDN download) is fetched automatically on
-the first run and cached in `~/.cache/torch/hub/checkpoints/`. The weights are released
-under Apple's own model license — check `LICENSE_MODEL` in the ml-sharp repo before
-using them for anything beyond research.
+## Test
 
-## Run
-
-```bash
-python run_sharp.py photos/pothole.jpg
-```
-
-That writes `out/pothole.ply`. On Apple Silicon it runs on the GPU via MPS
-automatically; `--device cpu` or `--device cuda` forces the choice.
-
-```bash
-python run_sharp.py photos/pothole.jpg --fov-deg 70 -o out   # override the lens
-python run_sharp.py photos/pothole.jpg --dry-run             # print the command only
-```
-
-### Focal length is the one setting that matters
-
-SHARP infers metric 3D from a single image, so the field of view it assumes determines
-the pothole's depth and size. It reads that from EXIF, and **falls back to 30 mm with
-only a log line if the photo has no focal length** — which is what you get from
-screenshots, crops, and most scraped images.
-
-`run_sharp.py` prints what SHARP is going to assume before it runs:
-
-```
-photo    photos/pothole.jpg  (4032x3024)
-focal    SHARP would assume 26.0mm @35mm = 3037px  [EXIF FocalLengthIn35mmFilm]
-```
-
-If that's wrong or defaulted, override it — the script restamps the photo's EXIF in a
-temp copy (your original is never modified) and hands that to SHARP:
-
-| flag | use when |
-|---|---|
-| `--fov-deg 70` | you know the camera's horizontal field of view |
-| `--focal-35mm 26` | you know the 35mm-equivalent focal length (phone wide ≈ 24–28 mm) |
-| `--focal-px 3037` | you have real intrinsics, e.g. from a calibration |
-
-The EXIF rules are mirrored from ml-sharp's `sharp/utils/io.py:load_rgb`, including its
-quirk of multiplying a `FocalLength` below 10 mm by 8.4 to guess a crop factor.
-
-## View the result
-
-```bash
-python -m http.server 8000      # from this folder
-# open http://localhost:8000/viewer/sharp.html?file=out/pothole.ply
-```
-
-Drag to orbit, right-drag to pan, scroll to zoom. The viewer is [Spark](https://github.com/sparkjsdev/spark)
-(three.js) and loads `.ply` directly.
-
-## Output format
-
-- `out/<photo stem>.ply` — a standard 3DGS `.ply`, so other renderers read it too.
-- Coordinates are SHARP's **OpenCV camera frame**: x right, y down, z forward, metric
-  with absolute scale. The photo's viewpoint is the origin and the pothole sits a few
-  meters down +z. Other 3DGS tools often assume y-up, so rotate/re-center on import.
-
-## Known limits
-
-- The splat looks right near the photo's viewpoint and smears at steep side angles —
-  there's only one view, so everything behind the pothole's rim is inferred.
-- `--render` produces an orbit mp4 but needs CUDA; it's ignored on CPU and MPS.
-- Scale is only as good as the focal length. An uncalibrated guess still looks fine
-  on screen while being metrically wrong, so set the lens if you care about depth.
+Start the backend from `backend/` (`uvicorn backend:app`), then run `python util/backend_tester.py`.
+It posts to `/render3DGaussianSplat` and saves the result to `util/render3DGaussianSplat.ply`.

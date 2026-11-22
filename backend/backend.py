@@ -1,17 +1,21 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import base64
 import io
 from pathlib import Path
 from PIL import Image
-from models import PotholeLocation
+from models import PotholeLocation, GaussianSplatRequest
 import math
 from pyproj import CRS, Transformer
 from astrapy import DataAPIClient
 from dotenv import load_dotenv
 import uuid
 import os
+import importlib
+
+sharp = importlib.import_module("3dgs.run_sharp")  # "3dgs" isn't a valid name for a plain import
 
 app = FastAPI()
 
@@ -122,4 +126,9 @@ def delete_pothole_data_from_database(pothole_id):
 
     issues_table.delete_one({"id" : pothole_id})
     return {"deleted": str(pothole_id)}
-    
+
+@app.post("/render3DGaussianSplat")
+def render_3d_gaussian_splat(SplatData: GaussianSplatRequest):
+    ply_path = sharp.render_gaussian_splat(SplatData.lat, SplatData.lon, SplatData.heading_deg, SplatData.image_base64)
+
+    return FileResponse(ply_path, media_type="application/octet-stream", filename="pothole.ply")

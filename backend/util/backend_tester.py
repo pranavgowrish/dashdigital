@@ -9,6 +9,7 @@ from PIL import Image
 
 URL = "http://127.0.0.1:8000/findPotholeLocation"
 DATABASE_URL = "http://127.0.0.1:8000/getPotholeDataFromDatabase"
+RENDER_URL = "http://127.0.0.1:8000/render3DGaussianSplat"
 
 
 def convert_image_to_base64_string(image_path):
@@ -50,6 +51,16 @@ FAKE_POTHOLE_DATA = {
 }
 
 
+FAKE_SPLAT_DATA = {
+    "lat": FAKE_POTHOLE_DATA["gps"]["lat"],
+    "lon": FAKE_POTHOLE_DATA["gps"]["lon"],
+    "heading_deg": FAKE_POTHOLE_DATA["gps"]["heading_degree"],
+    "image_base64": FAKE_POTHOLE_DATA["crop_jpeg_base64"],
+}
+
+PLY_OUTPUT_PATH = Path(__file__).with_name("render3DGaussianSplat.ply")
+
+
 def call_find_pothole_location():
     body = json.dumps(FAKE_POTHOLE_DATA).encode("utf-8")
     http_request = request.Request(
@@ -72,7 +83,30 @@ def test_database_retrieval():
     print(json.dumps(result, indent=2))
 
 
+def test_render_3d_gaussian_splat():
+    body = json.dumps(FAKE_SPLAT_DATA).encode("utf-8")
+    http_request = request.Request(
+        RENDER_URL,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    # SHARP runs 5 images on MPS, and the first run also downloads its checkpoint, so no timeout.
+    with request.urlopen(http_request) as response:
+        PLY_OUTPUT_PATH.write_bytes(response.read())
+
+    with open(PLY_OUTPUT_PATH, "rb") as ply_file:
+        header = []
+        while not header or header[-1] != "end_header":
+            header.append(ply_file.readline().decode("latin-1").strip())
+
+    print("\n".join(line for line in header if line.startswith("element")))
+    print(f"Saved {PLY_OUTPUT_PATH} ({PLY_OUTPUT_PATH.stat().st_size / 1e6:.1f} MB)")
+
+
 if __name__ == "__main__":
     # print(json.dumps(call_find_pothole_location(), indent=2))
     test_database_retrieval()
+    # test_render_3d_gaussian_splat()  # needs ~16 GB+ RAM; this 8 GB M1 runs out of memory
     print("Alr we good twin")

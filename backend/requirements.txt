@@ -4,3 +4,6 @@ Pillow
 pyproj
 astrapy
 python-dotenv
+requests
+numpy
+plyfile
